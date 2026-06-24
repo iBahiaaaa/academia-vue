@@ -1,51 +1,52 @@
 const routes = [
-
-  {
-    path: '/',
-    redirect: '/dashboard'
-  },
-
   {
     path: '/login',
-    component: () => import('pages/LoginPage.vue')
+    component: () => import('layouts/AuthLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'login',
+        component: () => import('pages/LoginPage.vue')
+      }
+    ]
   },
 
   {
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
-
+    meta: { requiresAuth: true },
     children: [
-
       {
-        path: '/dashboard',
+        path: '',
+        redirect: '/dashboard'
+      },
+      {
+        path: 'dashboard',
+        name: 'dashboard',
         component: () => import('pages/DashboardPage.vue')
       },
-
       {
-        path: '/clientes',
+        path: 'clientes',
+        name: 'clientes',
         component: () => import('pages/clientes/ClientesPage.vue')
       },
-
       {
-        path: '/pagamentos',
-        component: () => import('pages/pagamentos/PagamentosPage.vue')
-      },
-
-      {
-        path: '/treinos',
+        path: 'treinos',
+        name: 'treinos',
         component: () => import('pages/treinos/TreinosPage.vue')
+      },
+      {
+        path: 'pagamentos',
+        name: 'pagamentos',
+        component: () => import('pages/pagamentos/PagamentosPage.vue')
       }
-
     ]
   },
-
 
   {
     path: '/:catchAll(.*)*',
     component: () => import('pages/ErrorNotFound.vue')
   }
-
 ]
-
 
 export default routes
