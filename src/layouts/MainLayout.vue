@@ -4,9 +4,7 @@
       <q-toolbar>
         <q-btn flat dense round icon="menu" @click="leftDrawerOpen = !leftDrawerOpen" />
 
-        <q-toolbar-title>
-          Bahia Gym
-        </q-toolbar-title>
+        <q-toolbar-title> {{ nomeAcademia }} </q-toolbar-title>
 
         <q-btn flat dense round icon="logout" @click="confirmLogout">
           <q-tooltip>Sair</q-tooltip>
@@ -14,16 +12,10 @@
       </q-toolbar>
     </q-header>
 
-    <q-drawer
-      v-model="leftDrawerOpen"
-      show-if-above
-      bordered
-      :width="260"
-      class="bg-grey-1"
-    >
+    <q-drawer v-model="leftDrawerOpen" show-if-above bordered :width="260" class="bg-grey-1">
       <div class="q-pa-md">
-        <div class="text-h6 text-weight-bold">Academia</div>
-        <div class="text-caption text-grey-7">Gestão Bahia Gym</div>
+        <div class="text-h6 text-weight-bold">{{ nomeAcademia }}</div>
+        <div class="text-caption text-grey-7">{{ sloganAcademia }}</div>
       </div>
 
       <q-separator />
@@ -57,6 +49,13 @@
           <q-item-section>Pagamentos</q-item-section>
         </q-item>
       </q-list>
+
+      <q-item clickable v-ripple to="/configuracoes">
+        <q-item-section avatar>
+          <q-icon name="settings" />
+        </q-item-section>
+        <q-item-section>Configurações</q-item-section>
+      </q-item>
     </q-drawer>
 
     <q-page-container class="bg-grey-2">
@@ -66,16 +65,29 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
+
 import { useAuthStore } from 'src/stores/auth-store'
+import { useConfigStore } from 'src/stores/config-store'
 
 const router = useRouter()
 const $q = useQuasar()
+
 const authStore = useAuthStore()
+const configStore = useConfigStore()
 
 const leftDrawerOpen = ref(false)
+
+const nomeAcademia = computed(() => configStore.nomeAcademia)
+const sloganAcademia = computed(() => configStore.slogan)
+
+onMounted(async () => {
+  if (!configStore.initialized) {
+    await configStore.loadConfig()
+  }
+})
 
 function confirmLogout() {
   $q.dialog({

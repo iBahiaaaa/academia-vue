@@ -6,13 +6,7 @@
         <div class="text-grey-7">Gerencie os alunos/clientes da academia</div>
       </div>
 
-      <q-btn
-        color="primary"
-        icon="add"
-        label="Novo Cliente"
-        unelevated
-        @click="openCreateModal"
-      />
+      <q-btn color="primary" icon="add" label="Novo Cliente" unelevated @click="openCreateModal" />
     </div>
 
     <q-card flat bordered>
@@ -48,13 +42,7 @@
           </div>
 
           <div class="col-12 col-md-3 text-right">
-            <q-btn
-              flat
-              icon="refresh"
-              label="Atualizar"
-              :loading="loading"
-              @click="loadClientes"
-            />
+            <q-btn flat icon="refresh" label="Atualizar" :loading="loading" @click="loadClientes" />
           </div>
         </div>
       </q-card-section>
@@ -71,12 +59,26 @@
         rows-per-page-label="Registros por página"
         :pagination="pagination"
       >
+        <template #body-cell-data_matricula="props">
+          <q-td :props="props">
+            {{ formatDateOnly(props.row.data_matricula) }}
+          </q-td>
+        </template>
+
+        <template #body-cell-data_ultimo_pagamento="props">
+          <q-td :props="props">
+            {{ formatDateOnly(props.row.data_ultimo_pagamento) }}
+          </q-td>
+        </template>
+
+        <template #body-cell-data_vencimento="props">
+          <q-td :props="props">
+            {{ formatDateOnly(props.row.data_vencimento) }}
+          </q-td>
+        </template>
         <template #body-cell-status="props">
           <q-td :props="props">
-            <q-badge
-              :color="props.row.status === 'Ativo' ? 'positive' : 'grey'"
-              :label="props.row.status"
-            />
+            <q-badge :color="getStatusColor(props.row.status)" :label="props.row.status" />
           </q-td>
         </template>
 
@@ -88,14 +90,7 @@
 
         <template #body-cell-actions="props">
           <q-td :props="props" class="text-right">
-            <q-btn
-              flat
-              round
-              dense
-              color="primary"
-              icon="edit"
-              @click="openEditModal(props.row)"
-            >
+            <q-btn flat round dense color="primary" icon="edit" @click="openEditModal(props.row)">
               <q-tooltip>Editar</q-tooltip>
             </q-btn>
 
@@ -115,7 +110,7 @@
     </q-card>
 
     <q-dialog v-model="modal.open" persistent>
-      <q-card style="width: 700px; max-width: 95vw;">
+      <q-card style="width: 700px; max-width: 95vw">
         <q-card-section class="row items-center justify-between">
           <div class="text-h6">
             {{ modal.isEdit ? 'Editar Cliente' : 'Novo Cliente' }}
@@ -176,13 +171,7 @@
               </div>
 
               <div class="col-12 col-md-6">
-                <q-input
-                  v-model="form.cpf"
-                  outlined
-                  dense
-                  label="CPF"
-                  :disable="saving"
-                />
+                <q-input v-model="form.cpf" outlined dense label="CPF" :disable="saving" />
               </div>
 
               <div class="col-12 col-md-6">
@@ -195,26 +184,49 @@
                   :disable="saving"
                 />
               </div>
+              <div class="col-12 col-md-4">
+                <q-input
+                  v-model="form.data_matricula"
+                  outlined
+                  dense
+                  label="Data da matrícula"
+                  type="date"
+                  :disable="saving"
+                />
+              </div>
+
+              <div class="col-12 col-md-4">
+                <q-input
+                  v-model="form.data_ultimo_pagamento"
+                  outlined
+                  dense
+                  label="Último pagamento"
+                  type="date"
+                  :disable="saving"
+                  @update:model-value="calcularVencimentoPorPagamento"
+                />
+              </div>
+
+              <div class="col-12 col-md-4">
+                <q-input
+                  v-model="form.data_vencimento"
+                  outlined
+                  dense
+                  label="Data de vencimento"
+                  type="date"
+                  :disable="saving"
+                  @update:model-value="calcularStatusAutomatico"
+                />
+              </div>
             </div>
           </q-card-section>
 
           <q-separator />
 
           <q-card-actions align="right">
-            <q-btn
-              flat
-              label="Cancelar"
-              :disable="saving"
-              v-close-popup
-            />
+            <q-btn flat label="Cancelar" :disable="saving" v-close-popup />
 
-            <q-btn
-              color="primary"
-              unelevated
-              type="submit"
-              label="Salvar"
-              :loading="saving"
-            />
+            <q-btn color="primary" unelevated type="submit" label="Salvar" :loading="saving" />
           </q-card-actions>
         </q-form>
       </q-card>
@@ -234,17 +246,17 @@ const saving = ref(false)
 const clientes = ref([])
 
 const pagination = {
-  rowsPerPage: 10
+  rowsPerPage: 10,
 }
 
 const filters = reactive({
   search: '',
-  status: 'Todos'
+  status: 'Todos',
 })
 
 const modal = reactive({
   open: false,
-  isEdit: false
+  isEdit: false,
 })
 
 const form = reactive({
@@ -254,18 +266,23 @@ const form = reactive({
   telefone: '',
   cpf: '',
   data_nascimento: '',
-  status: 'Ativo'
+  data_matricula: '',
+  data_ultimo_pagamento: '',
+  data_vencimento: '',
+  status: 'Ativo',
 })
 
 const statusOptions = [
   { label: 'Todos', value: 'Todos' },
   { label: 'Ativo', value: 'Ativo' },
-  { label: 'Inativo', value: 'Inativo' }
+  { label: 'Pendente', value: 'Pendente' },
+  { label: 'Inativo', value: 'Inativo' },
 ]
 
 const statusOptionsWithoutAll = [
   { label: 'Ativo', value: 'Ativo' },
-  { label: 'Inativo', value: 'Inativo' }
+  { label: 'Pendente', value: 'Pendente' },
+  { label: 'Inativo', value: 'Inativo' },
 ]
 
 const columns = [
@@ -274,46 +291,67 @@ const columns = [
     label: 'Nome',
     field: 'nome',
     align: 'left',
-    sortable: true
+    sortable: true,
   },
   {
     name: 'email',
     label: 'E-mail',
     field: 'email',
-    align: 'left'
+    align: 'left',
   },
   {
     name: 'telefone',
     label: 'Telefone',
     field: 'telefone',
-    align: 'left'
+    align: 'left',
   },
   {
     name: 'cpf',
     label: 'CPF',
     field: 'cpf',
-    align: 'left'
+    align: 'left',
+  },
+  {
+    name: 'data_matricula',
+    label: 'Matrícula',
+    field: 'data_matricula',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'data_ultimo_pagamento',
+    label: 'Último Pagamento',
+    field: 'data_ultimo_pagamento',
+    align: 'left',
+    sortable: true,
+  },
+  {
+    name: 'data_vencimento',
+    label: 'Vencimento',
+    field: 'data_vencimento',
+    align: 'left',
+    sortable: true,
   },
   {
     name: 'status',
     label: 'Status',
     field: 'status',
     align: 'center',
-    sortable: true
+    sortable: true,
   },
   {
     name: 'created_at',
     label: 'Cadastro',
     field: 'created_at',
     align: 'left',
-    sortable: true
+    sortable: true,
   },
   {
     name: 'actions',
     label: 'Ações',
     field: 'actions',
-    align: 'right'
-  }
+    align: 'right',
+  },
 ]
 
 onMounted(() => {
@@ -324,10 +362,7 @@ async function loadClientes() {
   try {
     loading.value = true
 
-    let query = supabase
-      .from('clientes')
-      .select('*')
-      .order('created_at', { ascending: false })
+    let query = supabase.from('clientes').select('*').order('created_at', { ascending: false })
 
     if (filters.status && filters.status !== 'Todos') {
       query = query.eq('status', filters.status)
@@ -337,7 +372,7 @@ async function loadClientes() {
       const search = filters.search.trim()
 
       query = query.or(
-        `nome.ilike.%${search}%,email.ilike.%${search}%,telefone.ilike.%${search}%,cpf.ilike.%${search}%`
+        `nome.ilike.%${search}%,email.ilike.%${search}%,telefone.ilike.%${search}%,cpf.ilike.%${search}%`,
       )
     }
 
@@ -351,7 +386,7 @@ async function loadClientes() {
   } catch (error) {
     $q.notify({
       type: 'negative',
-      message: error.message || 'Erro ao carregar clientes'
+      message: error.message || 'Erro ao carregar clientes',
     })
   } finally {
     loading.value = false
@@ -364,6 +399,65 @@ function openCreateModal() {
   modal.open = true
 }
 
+function calcularVencimentoPorPagamento() {
+  if (!form.data_ultimo_pagamento) {
+    calcularStatusAutomatico()
+    return
+  }
+
+  const dataPagamento = new Date(`${form.data_ultimo_pagamento}T00:00:00`)
+  dataPagamento.setMonth(dataPagamento.getMonth() + 1)
+
+  form.data_vencimento = toDateInputValue(dataPagamento)
+
+  calcularStatusAutomatico()
+}
+
+function calcularStatusAutomatico() {
+  if (form.status === 'Inativo') {
+    return
+  }
+
+  if (!form.data_vencimento) {
+    form.status = 'Pendente'
+    return
+  }
+
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+
+  const vencimento = new Date(`${form.data_vencimento}T00:00:00`)
+  vencimento.setHours(0, 0, 0, 0)
+
+  form.status = vencimento < hoje ? 'Pendente' : 'Ativo'
+}
+
+function toDateInputValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function getTodayDateInput() {
+  return toDateInputValue(new Date())
+}
+
+function formatDateOnly(value) {
+  if (!value) {
+    return '-'
+  }
+
+  const [year, month, day] = value.split('-')
+
+  if (!year || !month || !day) {
+    return '-'
+  }
+
+  return `${day}/${month}/${year}`
+}
+
 function openEditModal(cliente) {
   form.id = cliente.id
   form.nome = cliente.nome || ''
@@ -371,19 +465,45 @@ function openEditModal(cliente) {
   form.telefone = cliente.telefone || ''
   form.cpf = cliente.cpf || ''
   form.data_nascimento = cliente.data_nascimento || ''
+  form.data_matricula = cliente.data_matricula || ''
+  form.data_ultimo_pagamento = cliente.data_ultimo_pagamento || ''
+  form.data_vencimento = cliente.data_vencimento || ''
   form.status = cliente.status || 'Ativo'
+
+  calcularStatusAutomatico()
 
   modal.isEdit = true
   modal.open = true
 }
 
+function getStatusColor(status) {
+  if (status === 'Ativo') {
+    return 'positive'
+  }
+
+  if (status === 'Pendente') {
+    return 'warning'
+  }
+
+  if (status === 'Inativo') {
+    return 'grey'
+  }
+
+  return 'grey'
+}
+
 function resetForm() {
+  const today = getTodayDateInput()
+
   form.id = null
   form.nome = ''
   form.email = ''
   form.telefone = ''
   form.cpf = ''
   form.data_nascimento = ''
+  form.data_matricula = today
+  form.data_ultimo_pagamento = ''
+  form.data_vencimento = ''
   form.status = 'Ativo'
 }
 
@@ -391,20 +511,22 @@ async function saveCliente() {
   try {
     saving.value = true
 
+    calcularStatusAutomatico()
+
     const payload = {
       nome: form.nome,
       email: emptyToNull(form.email),
       telefone: emptyToNull(form.telefone),
       cpf: emptyToNull(form.cpf),
       data_nascimento: emptyToNull(form.data_nascimento),
-      status: form.status
+      data_matricula: emptyToNull(form.data_matricula),
+      data_ultimo_pagamento: emptyToNull(form.data_ultimo_pagamento),
+      data_vencimento: emptyToNull(form.data_vencimento),
+      status: form.status,
     }
 
     if (modal.isEdit) {
-      const { error } = await supabase
-        .from('clientes')
-        .update(payload)
-        .eq('id', form.id)
+      const { error } = await supabase.from('clientes').update(payload).eq('id', form.id)
 
       if (error) {
         throw error
@@ -412,12 +534,10 @@ async function saveCliente() {
 
       $q.notify({
         type: 'positive',
-        message: 'Cliente atualizado com sucesso'
+        message: 'Cliente atualizado com sucesso',
       })
     } else {
-      const { error } = await supabase
-        .from('clientes')
-        .insert(payload)
+      const { error } = await supabase.from('clientes').insert(payload)
 
       if (error) {
         throw error
@@ -425,7 +545,7 @@ async function saveCliente() {
 
       $q.notify({
         type: 'positive',
-        message: 'Cliente cadastrado com sucesso'
+        message: 'Cliente cadastrado com sucesso',
       })
     }
 
@@ -435,7 +555,7 @@ async function saveCliente() {
   } catch (error) {
     $q.notify({
       type: 'negative',
-      message: error.message || 'Erro ao salvar cliente'
+      message: error.message || 'Erro ao salvar cliente',
     })
   } finally {
     saving.value = false
@@ -450,12 +570,12 @@ function confirmDelete(cliente) {
     ok: {
       label: 'Excluir',
       color: 'negative',
-      unelevated: true
+      unelevated: true,
     },
     cancel: {
       label: 'Cancelar',
-      flat: true
-    }
+      flat: true,
+    },
   }).onOk(async () => {
     await deleteCliente(cliente)
   })
@@ -465,10 +585,7 @@ async function deleteCliente(cliente) {
   try {
     loading.value = true
 
-    const { error } = await supabase
-      .from('clientes')
-      .delete()
-      .eq('id', cliente.id)
+    const { error } = await supabase.from('clientes').delete().eq('id', cliente.id)
 
     if (error) {
       throw error
@@ -476,14 +593,14 @@ async function deleteCliente(cliente) {
 
     $q.notify({
       type: 'positive',
-      message: 'Cliente excluído com sucesso'
+      message: 'Cliente excluído com sucesso',
     })
 
     await loadClientes()
   } catch (error) {
     $q.notify({
       type: 'negative',
-      message: error.message || 'Erro ao excluir cliente'
+      message: error.message || 'Erro ao excluir cliente',
     })
   } finally {
     loading.value = false
