@@ -274,21 +274,31 @@
 
             <div class="row items-center justify-between">
               <div>
-                <div class="text-subtitle1 text-weight-bold">Dias do treino</div>
+                <div class="text-subtitle1 text-weight-bold">Dias e exercícios</div>
                 <div class="text-caption text-grey-7">
-                  Esta primeira versão cria a ficha. Depois vamos evoluir para editar exercícios
-                  dentro dela.
+                  Monte a ficha do aluno com exercícios, séries, repetições, descanso e observações.
                 </div>
               </div>
 
-              <q-btn flat color="primary" icon="add" label="Adicionar dia" @click="addDia" />
+              <div class="row q-gutter-sm">
+                <q-btn
+                  outline
+                  color="secondary"
+                  icon="auto_awesome"
+                  label="Gerar automático"
+                  :disable="loadingExercicios"
+                  @click="confirmGerarTreinoAutomatico"
+                />
+
+                <q-btn flat color="primary" icon="add" label="Adicionar dia" @click="addDia" />
+              </div>
             </div>
 
-            <q-list bordered separator>
-              <q-item v-for="(dia, index) in diasForm" :key="dia.local_id">
-                <q-item-section>
-                  <div class="row q-col-gutter-sm">
-                    <div class="col-12 col-md-5">
+            <div class="q-gutter-md">
+              <q-card v-for="(dia, diaIndex) in diasForm" :key="dia.local_id" flat bordered>
+                <q-card-section>
+                  <div class="row q-col-gutter-sm items-center">
+                    <div class="col-12 col-md-4">
                       <q-input
                         v-model="dia.nome"
                         outlined
@@ -298,7 +308,7 @@
                       />
                     </div>
 
-                    <div class="col-12 col-md-5">
+                    <div class="col-12 col-md-4">
                       <q-input
                         v-model="dia.grupo_foco"
                         outlined
@@ -308,7 +318,7 @@
                       />
                     </div>
 
-                    <div class="col-12 col-md-2">
+                    <div class="col-8 col-md-2">
                       <q-input
                         v-model.number="dia.ordem"
                         outlined
@@ -317,21 +327,172 @@
                         label="Ordem"
                       />
                     </div>
-                  </div>
-                </q-item-section>
 
-                <q-item-section side>
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    color="negative"
-                    icon="delete"
-                    @click="removeDia(index)"
-                  />
-                </q-item-section>
-              </q-item>
-            </q-list>
+                    <div class="col-4 col-md-2 text-right">
+                      <q-btn
+                        flat
+                        round
+                        dense
+                        color="negative"
+                        icon="delete"
+                        @click="removeDia(diaIndex)"
+                      >
+                        <q-tooltip>Remover dia</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
+                </q-card-section>
+
+                <q-separator />
+
+                <q-card-section>
+                  <div class="row items-center justify-between q-mb-sm">
+                    <div class="text-subtitle2">Exercícios</div>
+
+                    <q-btn
+                      dense
+                      outline
+                      color="primary"
+                      icon="add"
+                      label="Adicionar exercício"
+                      @click="addExercicioDia(dia)"
+                    />
+                  </div>
+
+                  <div
+                    v-if="!dia.exercicios || dia.exercicios.length === 0"
+                    class="text-grey-7 q-pa-md text-center bg-grey-2 rounded-borders"
+                  >
+                    Nenhum exercício adicionado neste dia.
+                  </div>
+
+                  <div
+                    v-for="(exercicio, exercicioIndex) in dia.exercicios"
+                    :key="exercicio.local_id"
+                    class="q-pa-sm q-mb-sm treino-exercicio-card"
+                  >
+                    <div class="row q-col-gutter-sm items-start">
+                      <div class="col-12 col-md-4">
+                        <q-select
+                          v-model="exercicio.exercicio_id"
+                          outlined
+                          dense
+                          emit-value
+                          map-options
+                          use-input
+                          input-debounce="0"
+                          label="Exercício"
+                          :options="exerciciosOptions"
+                          @filter="filterExercicios"
+                          @update:model-value="onSelectExercicio(exercicio)"
+                        >
+                          <template #option="scope">
+                            <q-item v-bind="scope.itemProps">
+                              <q-item-section>
+                                <q-item-label>{{ scope.opt.label }}</q-item-label>
+                                <q-item-label caption>
+                                  {{ scope.opt.aparelho || 'Sem aparelho' }}
+                                  · {{ scope.opt.grupo_muscular || 'Sem grupo' }}
+                                </q-item-label>
+                              </q-item-section>
+                            </q-item>
+                          </template>
+                        </q-select>
+                      </div>
+
+                      <div class="col-12 col-md-2">
+                        <q-input
+                          v-model.number="exercicio.series"
+                          outlined
+                          dense
+                          type="number"
+                          label="Séries"
+                        />
+                      </div>
+
+                      <div class="col-12 col-md-2">
+                        <q-input
+                          v-model="exercicio.repeticoes"
+                          outlined
+                          dense
+                          label="Reps"
+                          placeholder="10-12"
+                        />
+                      </div>
+
+                      <div class="col-12 col-md-2">
+                        <q-input
+                          v-model="exercicio.descanso"
+                          outlined
+                          dense
+                          label="Descanso"
+                          placeholder="60s"
+                        />
+                      </div>
+
+                      <div class="col-10 col-md-1">
+                        <q-input
+                          v-model.number="exercicio.ordem"
+                          outlined
+                          dense
+                          type="number"
+                          label="Ordem"
+                        />
+                      </div>
+
+                      <div class="col-2 col-md-1 text-right">
+                        <q-btn
+                          flat
+                          round
+                          dense
+                          color="negative"
+                          icon="delete"
+                          @click="removeExercicioDia(dia, exercicioIndex)"
+                        >
+                          <q-tooltip>Remover exercício</q-tooltip>
+                        </q-btn>
+                      </div>
+
+                      <div class="col-12 col-md-4">
+                        <q-input
+                          v-model="exercicio.nome_exercicio"
+                          outlined
+                          dense
+                          label="Nome na ficha"
+                          placeholder="Nome que aparecerá para o aluno"
+                        />
+                      </div>
+
+                      <div class="col-12 col-md-4">
+                        <q-input v-model="exercicio.aparelho" outlined dense label="Aparelho" />
+                      </div>
+
+                      <div class="col-12 col-md-4">
+                        <q-input
+                          v-model="exercicio.carga"
+                          outlined
+                          dense
+                          label="Carga"
+                          placeholder="Ex: Livre, 10kg, ajustar"
+                        />
+                      </div>
+
+                      <div class="col-12">
+                        <q-input
+                          v-model="exercicio.observacao"
+                          outlined
+                          dense
+                          type="textarea"
+                          rows="2"
+                          label="Observação"
+                          placeholder="Ex: executar com controle, evitar amplitude dolorosa..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
           </q-card-section>
 
           <q-separator />
@@ -648,6 +809,7 @@ const loading = ref(false)
 const saving = ref(false)
 const loadingExercicios = ref(false)
 const savingExercicio = ref(false)
+const exerciciosOptions = ref([])
 
 const clientes = ref([])
 const treinos = ref([])
@@ -968,6 +1130,10 @@ async function loadExercicios() {
     }
 
     exercicios.value = data || []
+
+    exerciciosOptions.value = exercicios.value
+      .filter((exercicio) => exercicio.ativo)
+      .map(mapExercicioOption)
   } catch (error) {
     $q.notify({
       type: 'negative',
@@ -997,6 +1163,7 @@ function openCreateTreinoModal(cliente) {
     createDiaLocal('Treino B', 'Full body', 2),
     createDiaLocal('Treino C', 'Full body', 3),
   ]
+  loadExercicios()
 }
 
 async function openEditTreinoModal(cliente) {
@@ -1029,12 +1196,29 @@ async function openEditTreinoModal(cliente) {
   })
 
   await loadDiasTreino(treino.id)
+  await loadExercicios()
 }
 
 async function loadDiasTreino(treinoId) {
   const { data, error } = await supabase
     .from('treino_dias')
-    .select('*')
+    .select(
+      `
+      *,
+      treino_exercicios (
+        id,
+        exercicio_id,
+        nome_exercicio,
+        aparelho,
+        series,
+        repeticoes,
+        descanso,
+        carga,
+        observacao,
+        ordem
+      )
+    `,
+    )
     .eq('treino_id', treinoId)
     .order('ordem', { ascending: true })
 
@@ -1045,6 +1229,12 @@ async function loadDiasTreino(treinoId) {
   diasForm.value = (data || []).map((dia) => ({
     ...dia,
     local_id: dia.id,
+    exercicios: (dia.treino_exercicios || [])
+      .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
+      .map((exercicio) => ({
+        ...exercicio,
+        local_id: exercicio.id,
+      })),
   }))
 }
 
@@ -1073,6 +1263,7 @@ function createDiaLocal(nome, grupoFoco, ordem) {
     nome,
     grupo_foco: grupoFoco,
     ordem,
+    exercicios: [],
   }
 }
 
@@ -1173,23 +1364,55 @@ async function saveDiasTreino(treinoId) {
     throw deleteError
   }
 
-  const diasPayload = diasForm.value
+  const diasValidos = diasForm.value
     .filter((dia) => dia.nome?.trim())
     .map((dia, index) => ({
-      treino_id: treinoId,
-      nome: dia.nome,
-      grupo_foco: emptyToNull(dia.grupo_foco),
+      ...dia,
       ordem: Number(dia.ordem || index + 1),
     }))
 
-  if (diasPayload.length === 0) {
-    return
-  }
+  for (const dia of diasValidos) {
+    const { data: diaCriado, error: diaError } = await supabase
+      .from('treino_dias')
+      .insert({
+        treino_id: treinoId,
+        nome: dia.nome,
+        grupo_foco: emptyToNull(dia.grupo_foco),
+        ordem: Number(dia.ordem || 1),
+      })
+      .select()
+      .single()
 
-  const { error } = await supabase.from('treino_dias').insert(diasPayload)
+    if (diaError) {
+      throw diaError
+    }
 
-  if (error) {
-    throw error
+    const exerciciosPayload = (dia.exercicios || [])
+      .filter((exercicio) => {
+        return exercicio.nome_exercicio?.trim() || exercicio.exercicio_id
+      })
+      .map((exercicio, index) => ({
+        treino_dia_id: diaCriado.id,
+        exercicio_id: exercicio.exercicio_id || null,
+        nome_exercicio: exercicio.nome_exercicio || 'Exercício',
+        aparelho: emptyToNull(exercicio.aparelho),
+        series: Number(exercicio.series || 3),
+        repeticoes: exercicio.repeticoes || '10-12',
+        descanso: exercicio.descanso || '60s',
+        carga: emptyToNull(exercicio.carga),
+        observacao: emptyToNull(exercicio.observacao),
+        ordem: Number(exercicio.ordem || index + 1),
+      }))
+
+    if (exerciciosPayload.length > 0) {
+      const { error: exerciciosError } = await supabase
+        .from('treino_exercicios')
+        .insert(exerciciosPayload)
+
+      if (exerciciosError) {
+        throw exerciciosError
+      }
+    }
   }
 }
 
@@ -1317,6 +1540,275 @@ async function deleteExercicio(exercicio) {
   }
 }
 
+function gerarTreinoAutomatico() {
+  if (!exercicios.value.length) {
+    $q.notify({
+      type: 'warning',
+      message: 'Cadastre exercícios antes de gerar uma ficha automática'
+    })
+    return
+  }
+
+  const objetivo = treinoForm.objetivo || 'Hipertrofia'
+  const nivel = treinoForm.nivel || 'Iniciante'
+  const frequencia = Number(treinoForm.frequencia_semanal || 3)
+
+  const parametros = getParametrosPorObjetivo(objetivo)
+  const divisao = getDivisaoTreino(nivel, frequencia)
+
+  const gruposNecessarios = [...new Set(divisao.flatMap((dia) => dia.grupos))]
+  const gruposSemExercicio = gruposNecessarios.filter((grupo) => {
+    return !exercicios.value.some((exercicio) => {
+      return exercicio.ativo && exercicio.grupo_muscular === grupo
+    })
+  })
+
+  if (gruposSemExercicio.length) {
+    $q.notify({
+      type: 'warning',
+      message: `Faltam exercícios cadastrados para: ${gruposSemExercicio.join(', ')}`
+    })
+  }
+
+  const novosDias = divisao.map((dia, index) => {
+    const novoDia = createDiaLocal(dia.nome, dia.grupo_foco, index + 1)
+
+    novoDia.exercicios = montarExerciciosDoDia(dia.grupos, parametros)
+
+    return novoDia
+  })
+
+  diasForm.value = novosDias
+
+  treinoForm.origem = 'Manual'
+  treinoForm.revisao_status = 'Revisado'
+
+  $q.notify({
+    type: 'positive',
+    message: 'Treino automático gerado. Revise e ajuste antes de salvar.'
+  })
+}
+
+function getParametrosPorObjetivo(objetivo) {
+  if (objetivo === 'Emagrecimento') {
+    return {
+      series: 3,
+      repeticoes: '12-15',
+      descanso: '45-60s',
+      incluirCardio: true
+    }
+  }
+
+  if (objetivo === 'Força') {
+    return {
+      series: 4,
+      repeticoes: '4-6',
+      descanso: '120s',
+      incluirCardio: false
+    }
+  }
+
+  if (objetivo === 'Condicionamento') {
+    return {
+      series: 3,
+      repeticoes: '12-20',
+      descanso: '30-60s',
+      incluirCardio: true
+    }
+  }
+
+  if (objetivo === 'Mobilidade') {
+    return {
+      series: 2,
+      repeticoes: '12-15',
+      descanso: '30-45s',
+      incluirCardio: false
+    }
+  }
+
+  return {
+    series: 3,
+    repeticoes: '8-12',
+    descanso: '60-90s',
+    incluirCardio: false
+  }
+}
+
+function getDivisaoTreino(nivel, frequencia) {
+  if (frequencia <= 2) {
+    return [
+      {
+        nome: 'Treino A',
+        grupo_foco: 'Full body',
+        grupos: ['Peito', 'Costas', 'Pernas', 'Ombros', 'Abdômen']
+      },
+      {
+        nome: 'Treino B',
+        grupo_foco: 'Full body',
+        grupos: ['Pernas', 'Costas', 'Peito', 'Bíceps', 'Tríceps']
+      }
+    ]
+  }
+
+  if (frequencia === 3) {
+    if (nivel === 'Iniciante') {
+      return [
+        {
+          nome: 'Treino A',
+          grupo_foco: 'Full body',
+          grupos: ['Peito', 'Costas', 'Pernas', 'Abdômen']
+        },
+        {
+          nome: 'Treino B',
+          grupo_foco: 'Full body',
+          grupos: ['Pernas', 'Ombros', 'Costas', 'Bíceps']
+        },
+        {
+          nome: 'Treino C',
+          grupo_foco: 'Full body',
+          grupos: ['Peito', 'Pernas', 'Tríceps', 'Abdômen']
+        }
+      ]
+    }
+
+    return [
+      {
+        nome: 'Treino A',
+        grupo_foco: 'Peito, ombros e tríceps',
+        grupos: ['Peito', 'Ombros', 'Tríceps']
+      },
+      {
+        nome: 'Treino B',
+        grupo_foco: 'Costas e bíceps',
+        grupos: ['Costas', 'Bíceps', 'Abdômen']
+      },
+      {
+        nome: 'Treino C',
+        grupo_foco: 'Pernas',
+        grupos: ['Pernas', 'Abdômen']
+      }
+    ]
+  }
+
+  if (frequencia === 4) {
+    return [
+      {
+        nome: 'Treino A',
+        grupo_foco: 'Superior 1',
+        grupos: ['Peito', 'Costas', 'Ombros', 'Tríceps']
+      },
+      {
+        nome: 'Treino B',
+        grupo_foco: 'Inferior 1',
+        grupos: ['Pernas', 'Abdômen']
+      },
+      {
+        nome: 'Treino C',
+        grupo_foco: 'Superior 2',
+        grupos: ['Costas', 'Peito', 'Bíceps', 'Ombros']
+      },
+      {
+        nome: 'Treino D',
+        grupo_foco: 'Inferior 2',
+        grupos: ['Pernas', 'Abdômen']
+      }
+    ]
+  }
+
+  return [
+    {
+      nome: 'Treino A',
+      grupo_foco: 'Peito',
+      grupos: ['Peito', 'Tríceps']
+    },
+    {
+      nome: 'Treino B',
+      grupo_foco: 'Costas',
+      grupos: ['Costas', 'Bíceps']
+    },
+    {
+      nome: 'Treino C',
+      grupo_foco: 'Pernas',
+      grupos: ['Pernas', 'Abdômen']
+    },
+    {
+      nome: 'Treino D',
+      grupo_foco: 'Ombros',
+      grupos: ['Ombros', 'Abdômen']
+    },
+    {
+      nome: 'Treino E',
+      grupo_foco: 'Braços e cardio',
+      grupos: ['Bíceps', 'Tríceps', 'Cardio']
+    }
+  ]
+}
+
+function montarExerciciosDoDia(grupos, parametros) {
+  const lista = []
+
+  grupos.forEach((grupo) => {
+    const quantidade = getQuantidadeExerciciosPorGrupo(grupo)
+
+    const exerciciosGrupo = buscarExerciciosPorGrupo(grupo, quantidade)
+
+    exerciciosGrupo.forEach((exercicioBase) => {
+      lista.push(createExercicioFromBase(exercicioBase, lista.length + 1, parametros))
+    })
+  })
+
+  if (parametros.incluirCardio) {
+    const cardio = buscarExerciciosPorGrupo('Cardio', 1)
+
+    cardio.forEach((exercicioBase) => {
+      lista.push(createExercicioFromBase(exercicioBase, lista.length + 1, {
+        ...parametros,
+        series: 1,
+        repeticoes: '15-25 min',
+        descanso: '-'
+      }))
+    })
+  }
+
+  return lista
+}
+
+function getQuantidadeExerciciosPorGrupo(grupo) {
+  if (grupo === 'Pernas') {
+    return 3
+  }
+
+  if (grupo === 'Peito' || grupo === 'Costas') {
+    return 2
+  }
+
+  return 1
+}
+
+function buscarExerciciosPorGrupo(grupo, quantidade) {
+  const candidatos = exercicios.value
+    .filter((exercicio) => exercicio.ativo)
+    .filter((exercicio) => exercicio.grupo_muscular === grupo)
+
+  return candidatos.slice(0, quantidade)
+}
+
+function createExercicioFromBase(exercicioBase, ordem, parametros) {
+  return {
+    local_id: crypto.randomUUID(),
+    id: null,
+    exercicio_id: exercicioBase.id,
+    nome_exercicio: exercicioBase.nome || '',
+    aparelho: exercicioBase.aparelho || '',
+    series: parametros.series,
+    repeticoes: parametros.repeticoes,
+    descanso: parametros.descanso,
+    carga: '',
+    observacao: '',
+    ordem
+  }
+}
+
 function emptyToNull(value) {
   if (value === undefined || value === null) {
     return null
@@ -1343,6 +1835,108 @@ function removeImagem() {
   imagemForm.url = ''
   exercicioForm.imagem_url = ''
   imagemModal.open = false
+}
+
+function mapExercicioOption(exercicio) {
+  return {
+    label: exercicio.nome,
+    value: exercicio.id,
+    nome: exercicio.nome,
+    aparelho: exercicio.aparelho,
+    grupo_muscular: exercicio.grupo_muscular,
+    imagem_url: exercicio.imagem_url,
+  }
+}
+
+function filterExercicios(value, update) {
+  update(() => {
+    const needle = String(value || '').toLowerCase()
+
+    exerciciosOptions.value = exercicios.value
+      .filter((exercicio) => exercicio.ativo)
+      .filter((exercicio) => {
+        if (!needle) {
+          return true
+        }
+
+        return (
+          String(exercicio.nome || '')
+            .toLowerCase()
+            .includes(needle) ||
+          String(exercicio.aparelho || '')
+            .toLowerCase()
+            .includes(needle) ||
+          String(exercicio.grupo_muscular || '')
+            .toLowerCase()
+            .includes(needle)
+        )
+      })
+      .map(mapExercicioOption)
+  })
+}
+
+function createExercicioLocal(ordem) {
+  return {
+    local_id: crypto.randomUUID(),
+    id: null,
+    exercicio_id: null,
+    nome_exercicio: '',
+    aparelho: '',
+    series: 3,
+    repeticoes: '10-12',
+    descanso: '60s',
+    carga: '',
+    observacao: '',
+    ordem,
+  }
+}
+
+function addExercicioDia(dia) {
+  if (!dia.exercicios) {
+    dia.exercicios = []
+  }
+
+  dia.exercicios.push(createExercicioLocal(dia.exercicios.length + 1))
+}
+
+function removeExercicioDia(dia, index) {
+  dia.exercicios.splice(index, 1)
+}
+
+function onSelectExercicio(exercicioFicha) {
+  const exercicioBase = exercicios.value.find((item) => item.id === exercicioFicha.exercicio_id)
+
+  if (!exercicioBase) {
+    return
+  }
+
+  exercicioFicha.nome_exercicio = exercicioBase.nome || ''
+  exercicioFicha.aparelho = exercicioBase.aparelho || ''
+}
+
+function confirmGerarTreinoAutomatico() {
+  if (diasForm.value.some((dia) => dia.exercicios?.length > 0)) {
+    $q.dialog({
+      title: 'Gerar treino automático',
+      message: 'Isso vai substituir os dias e exercícios atuais da ficha. Deseja continuar?',
+      persistent: true,
+      ok: {
+        label: 'Gerar',
+        color: 'secondary',
+        unelevated: true
+      },
+      cancel: {
+        label: 'Cancelar',
+        flat: true
+      }
+    }).onOk(() => {
+      gerarTreinoAutomatico()
+    })
+
+    return
+  }
+
+  gerarTreinoAutomatico()
 }
 </script>
 
@@ -1373,5 +1967,11 @@ function removeImagem() {
   text-align: center;
   background: #eeeeee;
   color: #555;
+}
+
+.treino-exercicio-card {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
 }
 </style>
