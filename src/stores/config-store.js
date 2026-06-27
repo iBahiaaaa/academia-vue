@@ -104,6 +104,14 @@ export const useConfigStore = defineStore('config', {
       }
 
       Dark.set(this.config.tema === 'dark')
+    },
+
+    async toggleTheme() {
+      this.config.tema = this.config.tema === 'dark' ? 'light' : 'dark'
+      this.applyTheme()
+      
+      // Salvar a alteração no banco
+      await this.saveConfig({ tema: this.config.tema })
     }
   }
 })

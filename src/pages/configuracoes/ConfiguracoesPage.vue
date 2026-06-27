@@ -3,19 +3,10 @@
     <div class="row items-center justify-between q-mb-md">
       <div>
         <div class="text-h5 text-weight-bold">Configurações</div>
-        <div class="text-grey-7">
-          Personalize a academia, aparência e regras padrões do sistema
-        </div>
+        <div class="text-grey-7">Personalize a academia, aparência e regras padrões do sistema</div>
       </div>
 
-      <q-btn
-        color="primary"
-        icon="save"
-        label="Salvar"
-        unelevated
-        :loading="loading"
-        @click="save"
-      />
+      <q-badge :color="saveStatusColor" :label="saveStatusLabel" class="q-pa-sm" />
     </div>
 
     <div class="row q-col-gutter-md">
@@ -24,7 +15,8 @@
           <q-card-section>
             <div class="text-h6">Dados da academia</div>
             <div class="text-grey-7">
-              Essas informações aparecem no topo do sistema e podem ser usadas em relatórios futuramente.
+              Essas informações aparecem no topo do sistema e podem ser usadas em relatórios
+              futuramente.
             </div>
           </q-card-section>
 
@@ -43,13 +35,7 @@
               </div>
 
               <div class="col-12 col-md-6">
-                <q-input
-                  v-model="form.slogan"
-                  outlined
-                  dense
-                  label="Slogan"
-                  :disable="loading"
-                />
+                <q-input v-model="form.slogan" outlined dense label="Slogan" :disable="loading" />
               </div>
 
               <div class="col-12 col-md-4">
@@ -103,7 +89,8 @@
           <q-card-section>
             <div class="text-h6">Regras de pagamento</div>
             <div class="text-grey-7">
-              Esses dados podem ser usados na tela de pagamentos para calcular vencimentos automaticamente.
+              Esses dados podem ser usados na tela de pagamentos para calcular vencimentos
+              automaticamente.
             </div>
           </q-card-section>
 
@@ -127,8 +114,8 @@
               <div class="col-12 col-md-8">
                 <q-banner rounded class="bg-blue-1 text-blue-10">
                   Exemplo: se o pagamento for feito hoje e o padrão for
-                  <strong>{{ form.dias_vencimento_padrao || 30 }} dias</strong>,
-                  o sistema pode calcular automaticamente o próximo vencimento.
+                  <strong>{{ form.dias_vencimento_padrao || 30 }} dias</strong>, o sistema pode
+                  calcular automaticamente o próximo vencimento.
                 </q-banner>
               </div>
             </div>
@@ -138,9 +125,7 @@
         <q-card flat bordered class="q-mt-md">
           <q-card-section>
             <div class="text-h6">Aparência</div>
-            <div class="text-grey-7">
-              Controle a identidade visual do sistema.
-            </div>
+            <div class="text-grey-7">Controle a identidade visual do sistema.</div>
           </q-card-section>
 
           <q-separator />
@@ -222,9 +207,7 @@
         <q-card flat bordered>
           <q-card-section>
             <div class="text-h6">Pré-visualização</div>
-            <div class="text-grey-7">
-              Veja como a identidade aparece no sistema.
-            </div>
+            <div class="text-grey-7">Veja como a identidade aparece no sistema.</div>
           </q-card-section>
 
           <q-separator />
@@ -243,12 +226,7 @@
               <q-card-section>
                 <div class="row q-col-gutter-sm">
                   <div class="col-12">
-                    <q-btn
-                      color="primary"
-                      label="Botão primário"
-                      unelevated
-                      class="full-width"
-                    />
+                    <q-btn color="primary" label="Botão primário" unelevated class="full-width" />
                   </div>
 
                   <div class="col-12">
@@ -324,12 +302,16 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useConfigStore } from 'src/stores/config-store'
 
 const $q = useQuasar()
 const configStore = useConfigStore()
+const initialized = ref(false)
+const savingAuto = ref(false)
+const saveStatus = ref('saved')
+const saveTimer = ref(null)
 
 const form = reactive({
   nome_academia: '',
@@ -342,24 +324,70 @@ const form = reactive({
   dias_vencimento_padrao: 30,
   whatsapp: '',
   email: '',
-  endereco: ''
+  endereco: '',
 })
 
 const temaOptions = [
   { label: 'Claro', value: 'light' },
-  { label: 'Escuro', value: 'dark' }
+  { label: 'Escuro', value: 'dark' },
 ]
 
 const loading = computed(() => configStore.loading)
 
+const saveStatusLabel = computed(() => {
+  if (saveStatus.value === 'saving') {
+    return 'Salvando...'
+  }
+
+  if (saveStatus.value === 'error') {
+    return 'Erro ao salvar'
+  }
+
+  return 'Salvo automaticamente'
+})
+
+const saveStatusColor = computed(() => {
+  if (saveStatus.value === 'saving') {
+    return 'warning'
+  }
+
+  if (saveStatus.value === 'error') {
+    return 'negative'
+  }
+
+  return 'positive'
+})
+
 const previewHeaderStyle = computed(() => ({
-  background: `linear-gradient(135deg, ${form.cor_primaria}, ${form.cor_secundaria})`
+  background: `linear-gradient(135deg, ${form.cor_primaria}, ${form.cor_secundaria})`,
 }))
 
 onMounted(async () => {
   await configStore.loadConfig()
   fillForm()
+  initialized.value = true
 })
+
+watch(
+  form,
+  () => {
+    if (!initialized.value) {
+      return
+    }
+
+    applyPreviewTheme()
+    scheduleAutoSave()
+  },
+  { deep: true }
+)
+
+// Watch para sincronizar o form com o store quando o tema muda pelo botão do header
+watch(
+  () => configStore.config.tema,
+  (newTema) => {
+    form.tema = newTema
+  },
+)
 
 function fillForm() {
   Object.assign(form, {
@@ -373,18 +401,32 @@ function fillForm() {
     dias_vencimento_padrao: Number(configStore.config.dias_vencimento_padrao || 30),
     whatsapp: configStore.config.whatsapp || '',
     email: configStore.config.email || '',
-    endereco: configStore.config.endereco || ''
+    endereco: configStore.config.endereco || '',
   })
 }
 
-async function save() {
+function scheduleAutoSave() {
+  if (saveTimer.value) {
+    clearTimeout(saveTimer.value)
+  }
+
+  saveStatus.value = 'saving'
+
+  saveTimer.value = setTimeout(async () => {
+    await autoSave()
+  }, 700)
+}
+
+async function autoSave() {
   try {
+    savingAuto.value = true
+
     if (!form.nome_academia?.trim()) {
-      throw new Error('Informe o nome da academia')
+      return
     }
 
     if (!Number(form.dias_vencimento_padrao) || Number(form.dias_vencimento_padrao) <= 0) {
-      throw new Error('Informe uma quantidade válida de dias para vencimento')
+      return
     }
 
     await configStore.saveConfig({
@@ -401,16 +443,38 @@ async function save() {
       endereco: emptyToNull(form.endereco)
     })
 
-    $q.notify({
-      type: 'positive',
-      message: 'Configurações salvas com sucesso'
-    })
+    saveStatus.value = 'saved'
   } catch (error) {
+    console.error(error)
+
+    saveStatus.value = 'error'
+
     $q.notify({
       type: 'negative',
       message: error.message || 'Erro ao salvar configurações'
     })
+  } finally {
+    savingAuto.value = false
   }
+}
+
+function applyPreviewTheme() {
+  configStore.config = {
+    ...configStore.config,
+    nome_academia: form.nome_academia,
+    slogan: form.slogan,
+    cor_primaria: form.cor_primaria,
+    cor_secundaria: form.cor_secundaria,
+    cor_acento: form.cor_acento,
+    tema: form.tema,
+    valor_mensalidade: Number(form.valor_mensalidade || 0),
+    dias_vencimento_padrao: Number(form.dias_vencimento_padrao || 30),
+    whatsapp: form.whatsapp,
+    email: form.email,
+    endereco: form.endereco
+  }
+
+  configStore.applyTheme()
 }
 
 function emptyToNull(value) {
