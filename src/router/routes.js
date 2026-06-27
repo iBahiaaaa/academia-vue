@@ -41,6 +41,11 @@ const routes = [
         component: () => import('pages/pagamentos/PagamentosPage.vue'),
       },
       {
+        path: 'funcionarios',
+        name: 'funcionarios',
+        component: () => import('pages/funcionarios/FuncionariosPage.vue'),
+      },
+      {
         path: 'configuracoes',
         name: 'configuracoes',
         component: () => import('pages/configuracoes/ConfiguracoesPage.vue'),

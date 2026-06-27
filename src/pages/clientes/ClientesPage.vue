@@ -98,6 +98,17 @@
               flat
               round
               dense
+              color="secondary"
+              icon="key"
+              @click="openAcessoAlunoModal(props.row)"
+            >
+              <q-tooltip>Criar acesso do aluno</q-tooltip>
+            </q-btn>
+
+            <q-btn
+              flat
+              round
+              dense
               color="negative"
               icon="delete"
               @click="confirmDelete(props.row)"
@@ -227,6 +238,60 @@
             <q-btn flat label="Cancelar" :disable="saving" v-close-popup />
 
             <q-btn color="primary" unelevated type="submit" label="Salvar" :loading="saving" />
+          </q-card-actions>
+        </q-form>
+      </q-card>
+    </q-dialog>
+    <q-dialog v-model="acessoAlunoModal.open" persistent>
+      <q-card style="width: 520px; max-width: 95vw">
+        <q-card-section class="row items-center justify-between">
+          <div>
+            <div class="text-h6">Acesso do aluno</div>
+            <div class="text-grey-7">
+              {{ acessoAlunoModal.cliente?.nome }}
+            </div>
+          </div>
+
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-form @submit.prevent="criarAcessoAluno">
+          <q-card-section class="q-gutter-md">
+            <q-input
+              v-model="acessoAlunoForm.email"
+              outlined
+              dense
+              label="E-mail de acesso"
+              type="email"
+              lazy-rules
+              :rules="[(val) => !!val || 'Informe o e-mail']"
+            />
+
+            <q-banner rounded class="bg-blue-1 text-blue-10">
+              A senha temporária será gerada automaticamente com 6 caracteres. Depois, no primeiro
+              acesso, o aluno deverá trocar a senha.
+            </q-banner>
+
+            <q-banner rounded class="bg-blue-1 text-blue-10">
+              Esse botão será ligado a uma Edge Function para criar o usuário no Supabase Auth com
+              segurança.
+            </q-banner>
+          </q-card-section>
+
+          <q-separator />
+
+          <q-card-actions align="right">
+            <q-btn flat label="Cancelar" v-close-popup />
+
+            <q-btn
+              color="primary"
+              unelevated
+              type="submit"
+              label="Criar acesso"
+              :loading="savingAcessoAluno"
+            />
           </q-card-actions>
         </q-form>
       </q-card>
@@ -456,6 +521,171 @@ function formatDateOnly(value) {
   }
 
   return `${day}/${month}/${year}`
+}
+
+const savingAcessoAluno = ref(false)
+
+const acessoAlunoModal = reactive({
+  open: false,
+  cliente: null,
+})
+
+const acessoAlunoForm = reactive({
+  email: '',
+})
+
+function openAcessoAlunoModal(cliente) {
+  acessoAlunoModal.open = true
+  acessoAlunoModal.cliente = cliente
+
+  acessoAlunoForm.email = cliente.email || ''
+}
+
+async function criarAcessoAluno() {
+  try {
+    savingAcessoAluno.value = true
+
+    const cliente = acessoAlunoModal.cliente
+
+    if (!cliente?.id) {
+      throw new Error('Cliente não informado')
+    }
+
+    if (!acessoAlunoForm.email?.trim()) {
+      throw new Error('Informe o e-mail')
+    }
+
+    const { data, error } = await supabase.functions.invoke('criar-acesso-aluno', {
+      body: {
+        cliente_id: cliente.id,
+        email: acessoAlunoForm.email,
+        nome: cliente.nome,
+      },
+    })
+
+    if (error) {
+      let functionMessage = error.message
+
+      try {
+        if (error.context) {
+          const errorBody = await error.context.json()
+          functionMessage = errorBody?.error || functionMessage
+        }
+      } catch {
+        // mantém mensagem padrão
+      }
+
+      throw new Error(functionMessage)
+    }
+
+    if (data?.error) {
+      throw new Error(data.error)
+    }
+
+    const senhaTemporaria = data.senha_temporaria
+    const copyButtonId = `copy-temp-password-${Date.now()}`
+
+    $q.dialog({
+      title: 'Acesso criado',
+      html: true,
+      message: `
+    <div>
+      <p>Acesso do aluno criado com sucesso.</p>
+
+      <div style="
+        margin: 12px 0;
+        padding: 12px;
+        border-radius: 8px;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+      ">
+        <div style="
+          font-size: 12px;
+          color: #666;
+          margin-bottom: 6px;
+        ">
+          Senha temporária
+        </div>
+
+        <div style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        ">
+          <code style="
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #111;
+          ">${senhaTemporaria}</code>
+
+          <button
+            id="${copyButtonId}"
+            type="button"
+            style="
+              border: none;
+              border-radius: 6px;
+              padding: 8px 12px;
+              cursor: pointer;
+              background: #1976d2;
+              color: white;
+              font-weight: 600;
+            "
+          >
+            Copiar
+          </button>
+        </div>
+      </div>
+
+      <p>Anote ou envie essa senha ao aluno.</p>
+    </div>
+  `,
+      ok: {
+        label: 'Entendi',
+        color: 'primary',
+        unelevated: true,
+      },
+      persistent: true,
+    })
+
+    setTimeout(() => {
+      const copyButton = document.getElementById(copyButtonId)
+
+      if (!copyButton) {
+        return
+      }
+
+      copyButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(senhaTemporaria)
+
+          $q.notify({
+            type: 'positive',
+            message: 'Senha copiada',
+          })
+        } catch {
+          $q.notify({
+            type: 'negative',
+            message: 'Não foi possível copiar a senha',
+          })
+        }
+      })
+    }, 300)
+
+    acessoAlunoModal.open = false
+    acessoAlunoModal.cliente = null
+    acessoAlunoForm.email = ''
+
+    await loadClientes()
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.message || 'Erro ao criar acesso do aluno',
+    })
+  } finally {
+    savingAcessoAluno.value = false
+  }
 }
 
 function openEditModal(cliente) {
