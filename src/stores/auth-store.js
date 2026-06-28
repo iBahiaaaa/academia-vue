@@ -123,6 +123,16 @@ export const useAuthStore = defineStore('auth', {
 
         await this.loadProfile()
 
+        if (this.profile?.perfil === 'aluno') {
+          await this.logout()
+          throw new Error('Este e-mail pertence a um aluno e não tem acesso ao painel administrativo')
+        }
+
+        if (!this.canAccessAdmin) {
+          await this.logout()
+          throw new Error('Este usuário não tem acesso ao painel administrativo')
+        }
+
         return data
       } finally {
         this.loading = false
