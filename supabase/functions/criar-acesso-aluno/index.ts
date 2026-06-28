@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Perfil do usuário solicitante não encontrado' }, 403)
     }
 
-    const perfisPermitidos = ['admin', 'instrutor', 'recepcao']
+    const perfisPermitidos = ['dev', 'super_admin', 'admin', 'instrutor', 'recepcao']
 
     if (!callerProfile.ativo || !perfisPermitidos.includes(callerProfile.perfil)) {
       return jsonResponse({ error: 'Usuário sem permissão para criar acesso de aluno' }, 403)

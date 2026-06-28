@@ -55,21 +55,21 @@
           <q-item-section>Dashboard</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/clientes">
+        <q-item v-if="authStore.canAccessClientes" clickable v-ripple to="/clientes">
           <q-item-section avatar>
             <q-icon name="groups" />
           </q-item-section>
           <q-item-section>Clientes</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/treinos">
+        <q-item v-if="authStore.canAccessTreinos" clickable v-ripple to="/treinos">
           <q-item-section avatar>
             <q-icon name="fitness_center" />
           </q-item-section>
           <q-item-section>Treinos</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/pagamentos">
+        <q-item v-if="authStore.canAccessPagamentos" clickable v-ripple to="/pagamentos">
           <q-item-section avatar>
             <q-icon name="payments" />
           </q-item-section>
@@ -83,7 +83,7 @@
           <q-item-section>Funcionários</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/configuracoes">
+        <q-item v-if="authStore.canAccessConfiguracoes" clickable v-ripple to="/configuracoes">
           <q-item-section avatar>
             <q-icon name="settings" />
           </q-item-section>

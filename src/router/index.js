@@ -9,6 +9,15 @@ import {
 import routes from './routes'
 import { useAuthStore } from 'src/stores/auth-store'
 
+const fallbackRouteByPerfil = {
+  dev: '/dashboard',
+  super_admin: '/dashboard',
+  admin: '/dashboard',
+  instrutor: '/dashboard',
+  recepcao: '/dashboard',
+  financeiro: '/dashboard',
+}
+
 export default route(function () {
   const createHistory = process.env.SERVER
     ? createMemoryHistory
@@ -35,7 +44,27 @@ export default route(function () {
       return '/login'
     }
 
+    if (requiresAuth && !authStore.canAccessAdmin) {
+      await authStore.logout()
+      return '/login'
+    }
+
+    const perfisPermitidos = to.matched.flatMap((record) => record.meta.perfis || [])
+
+    if (
+      requiresAuth &&
+      perfisPermitidos.length > 0 &&
+      !perfisPermitidos.includes(authStore.perfil)
+    ) {
+      return fallbackRouteByPerfil[authStore.perfil] || '/login'
+    }
+
     if (to.name === 'login' && authStore.isAuthenticated) {
+      if (!authStore.canAccessAdmin) {
+        await authStore.logout()
+        return true
+      }
+
       return '/dashboard'
     }
 

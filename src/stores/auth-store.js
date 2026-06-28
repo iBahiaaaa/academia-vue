@@ -15,11 +15,28 @@ export const useAuthStore = defineStore('auth', {
 
     perfil: (state) => state.profile?.perfil || null,
 
+    canAccessAdmin: (state) =>
+      ['dev', 'super_admin', 'admin', 'instrutor', 'recepcao', 'financeiro'].includes(
+        state.profile?.perfil,
+      ),
+
     isDev: (state) => state.profile?.perfil === 'dev',
 
     isSuperAdmin: (state) => state.profile?.perfil === 'super_admin',
 
     isAdmin: (state) => ['dev', 'super_admin', 'admin'].includes(state.profile?.perfil),
+
+    canAccessClientes: (state) =>
+      ['dev', 'super_admin', 'admin', 'instrutor', 'recepcao'].includes(state.profile?.perfil),
+
+    canAccessTreinos: (state) =>
+      ['dev', 'super_admin', 'admin', 'instrutor'].includes(state.profile?.perfil),
+
+    canAccessPagamentos: (state) =>
+      ['dev', 'super_admin', 'admin', 'recepcao', 'financeiro'].includes(state.profile?.perfil),
+
+    canAccessConfiguracoes: (state) =>
+      ['dev', 'super_admin', 'admin'].includes(state.profile?.perfil),
 
     canManageFuncionarios: (state) =>
       ['dev', 'super_admin', 'admin'].includes(state.profile?.perfil),
