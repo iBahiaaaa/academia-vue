@@ -2,7 +2,7 @@
   <q-page class="login-page flex flex-center">
     <q-card class="login-card">
       <q-card-section class="text-center">
-        <div class="text-h4 text-weight-bold">Bahia Gym</div>
+        <div class="text-h4 text-weight-bold">{{ nomeAcademia }}</div>
         <div class="text-grey-7 q-mt-sm">Acesse sua conta</div>
       </q-card-section>
 
@@ -45,14 +45,16 @@
 </template>
 
 <script setup>
-import { reactive, computed } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from 'src/stores/auth-store'
+import { useConfigStore } from 'src/stores/config-store'
 
 const router = useRouter()
 const $q = useQuasar()
 const authStore = useAuthStore()
+const configStore = useConfigStore()
 
 const form = reactive({
   email: '',
@@ -60,6 +62,17 @@ const form = reactive({
 })
 
 const loading = computed(() => authStore.loading)
+const nomeAcademia = computed(() => configStore.nomeAcademia)
+
+onMounted(async () => {
+  if (!configStore.initialized) {
+    try {
+      await configStore.loadConfig()
+    } catch (error) {
+      console.error('Erro ao carregar configurações no login:', error)
+    }
+  }
+})
 
 async function handleLogin() {
   try {
