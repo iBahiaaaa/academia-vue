@@ -1,17 +1,50 @@
 import { defineStore } from 'pinia'
-import { supabase } from 'src/boot/supabase'
+
+import { apiRequest, getAccessToken, setAccessToken } from 'src/services/api-client'
+
+function mapUserToProfile(user) {
+  if (!user) {
+    return null
+  }
+
+  return {
+    id: user.id,
+    nome: user.nome,
+    email: user.email,
+    perfil: user.perfil,
+    tenant_id: user.tenantId,
+    filial_id: user.filialId,
+    cliente_id: user.clienteId,
+    precisa_trocar_senha: user.precisaTrocarSenha,
+  }
+}
+
+function mapUserToSession(user, accessToken) {
+  if (!user || !accessToken) {
+    return null
+  }
+
+  return {
+    access_token: accessToken,
+    user: {
+      id: user.id,
+      email: user.email,
+    },
+  }
+}
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     session: null,
     profile: null,
+    accessToken: getAccessToken(),
     loading: false,
     initialized: false,
   }),
 
   getters: {
-    isAuthenticated: (state) => !!state.session?.user,
+    isAuthenticated: (state) => !!state.accessToken && !!state.user,
 
     perfil: (state) => state.profile?.perfil || null,
 
@@ -53,33 +86,28 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.loading = true
 
-        const { data, error } = await supabase.auth.getSession()
-
-        if (error) {
-          console.error('Erro ao buscar sessão:', error)
-        }
-
-        this.session = data?.session || null
-        this.user = data?.session?.user || null
-
-        if (this.user) {
-          await this.loadProfile()
-        } else {
-          this.profile = null
-        }
-
-        supabase.auth.onAuthStateChange(async (_event, session) => {
-          this.session = session
-          this.user = session?.user || null
-
-          if (this.user) {
+        if (this.accessToken) {
+          try {
             await this.loadProfile()
-          } else {
-            this.profile = null
+            return
+          } catch {
+            this.clearAuthState()
           }
-        })
+        }
+
+        try {
+          const data = await apiRequest('/auth/refresh', {
+            method: 'POST',
+            body: {},
+          })
+
+          this.applyAuthResult(data)
+        } catch {
+          this.clearAuthState()
+        }
       } catch (error) {
         console.error('Erro no initialize auth:', error)
+        this.clearAuthState()
       } finally {
         this.initialized = true
         this.loading = false
@@ -87,50 +115,38 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async loadProfile() {
-      if (!this.user?.id) {
-        this.profile = null
-        return
+      const user = await apiRequest('/auth/me')
+
+      this.user = {
+        id: user.id,
+        email: user.email,
       }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', this.user.id)
-        .single()
-
-      if (error) {
-        throw error
-      }
-
-      this.profile = data
+      this.profile = mapUserToProfile(user)
+      this.session = mapUserToSession(user, this.accessToken)
     },
 
     async login(email, password) {
       try {
         this.loading = true
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+        const data = await apiRequest('/auth/login', {
+          method: 'POST',
+          body: {
+            email,
+            password,
+          },
         })
 
-        if (error) {
-          throw error
-        }
-
-        this.session = data.session
-        this.user = data.user
-
-        await this.loadProfile()
+        this.applyAuthResult(data)
 
         if (this.profile?.perfil === 'aluno') {
           await this.logout()
-          throw new Error('Este e-mail pertence a um aluno e não tem acesso ao painel administrativo')
+          throw new Error('Este e-mail pertence a um aluno e nao tem acesso ao painel administrativo')
         }
 
         if (!this.canAccessAdmin) {
           await this.logout()
-          throw new Error('Este usuário não tem acesso ao painel administrativo')
+          throw new Error('Este usuario nao tem acesso ao painel administrativo')
         }
 
         return data
@@ -139,23 +155,54 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    async changePassword(currentPassword, newPassword) {
+      await apiRequest('/auth/password', {
+        method: 'PATCH',
+        body: {
+          currentPassword,
+          newPassword,
+        },
+      })
+
+      await this.loadProfile()
+    },
+
     async logout() {
       try {
         this.loading = true
 
-        const { error } = await supabase.auth.signOut()
-
-        if (error) {
-          throw error
+        try {
+          await apiRequest('/auth/logout', {
+            method: 'POST',
+            body: {},
+          })
+        } finally {
+          this.clearAuthState()
+          this.initialized = false
         }
-
-        this.session = null
-        this.user = null
-        this.profile = null
-        this.initialized = false
       } finally {
         this.loading = false
       }
+    },
+
+    applyAuthResult(data) {
+      this.accessToken = data.accessToken
+      setAccessToken(data.accessToken)
+
+      this.user = {
+        id: data.user.id,
+        email: data.user.email,
+      }
+      this.profile = mapUserToProfile(data.user)
+      this.session = mapUserToSession(data.user, data.accessToken)
+    },
+
+    clearAuthState() {
+      this.accessToken = ''
+      setAccessToken('')
+      this.session = null
+      this.user = null
+      this.profile = null
     },
   },
 })

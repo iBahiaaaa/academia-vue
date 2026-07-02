@@ -801,7 +801,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { supabase } from 'src/boot/supabase'
+import { apiRequest } from 'src/services/api-client'
 
 const $q = useQuasar()
 
@@ -1090,28 +1090,17 @@ async function loadPage() {
 }
 
 async function loadClientes() {
-  const { data, error } = await supabase
-    .from('clientes')
-    .select('*')
-    .order('nome', { ascending: true })
+  const data = await apiRequest('/clientes')
 
-  if (error) {
-    throw error
-  }
-
-  clientes.value = data || []
+  clientes.value = (data || []).sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')))
 }
 
 async function loadTreinos() {
-  const { data, error } = await supabase
-    .from('treinos')
-    .select('*')
-    .eq('status', 'Ativo')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    throw error
-  }
+  const params = new URLSearchParams({
+    status: 'Ativo',
+    order: 'created_at.desc',
+  })
+  const data = await apiRequest(`/treinos?${params.toString()}`)
 
   treinos.value = data || []
 }
@@ -1120,14 +1109,7 @@ async function loadExercicios() {
   try {
     loadingExercicios.value = true
 
-    const { data, error } = await supabase
-      .from('exercicios')
-      .select('*')
-      .order('nome', { ascending: true })
-
-    if (error) {
-      throw error
-    }
+    const data = await apiRequest('/treinos/exercicios?order=nome.asc')
 
     exercicios.value = data || []
 
@@ -1200,36 +1182,12 @@ async function openEditTreinoModal(cliente) {
 }
 
 async function loadDiasTreino(treinoId) {
-  const { data, error } = await supabase
-    .from('treino_dias')
-    .select(
-      `
-      *,
-      treino_exercicios (
-        id,
-        exercicio_id,
-        nome_exercicio,
-        aparelho,
-        series,
-        repeticoes,
-        descanso,
-        carga,
-        observacao,
-        ordem
-      )
-    `,
-    )
-    .eq('treino_id', treinoId)
-    .order('ordem', { ascending: true })
-
-  if (error) {
-    throw error
-  }
+  const data = await apiRequest(`/treinos/${treinoId}/dias`)
 
   diasForm.value = (data || []).map((dia) => ({
     ...dia,
     local_id: dia.id,
-    exercicios: (dia.treino_exercicios || [])
+    exercicios: (dia.treino_exercicios || dia.exercicios || [])
       .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
       .map((exercicio) => ({
         ...exercicio,
@@ -1303,19 +1261,17 @@ async function saveTreino() {
     let treinoId = treinoForm.id
 
     if (treinoModal.isEdit) {
-      const { error } = await supabase.from('treinos').update(payload).eq('id', treinoForm.id)
-
-      if (error) {
-        throw error
-      }
+      await apiRequest(`/treinos/${treinoForm.id}`, {
+        method: 'PATCH',
+        body: payload,
+      })
     } else {
       await arquivarTreinosAtivosDoCliente(treinoForm.cliente_id)
 
-      const { data, error } = await supabase.from('treinos').insert(payload).select().single()
-
-      if (error) {
-        throw error
-      }
+      const data = await apiRequest('/treinos', {
+        method: 'POST',
+        body: payload,
+      })
 
       treinoId = data.id
     }
@@ -1340,82 +1296,53 @@ async function saveTreino() {
 }
 
 async function arquivarTreinosAtivosDoCliente(clienteId) {
-  const { error } = await supabase
-    .from('treinos')
-    .update({
-      status: 'Arquivado',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('cliente_id', clienteId)
-    .eq('status', 'Ativo')
+  const treinosAtivos = treinos.value.filter((treino) => {
+    return treino.cliente_id === clienteId && treino.status === 'Ativo'
+  })
 
-  if (error) {
-    throw error
-  }
+  await Promise.all(
+    treinosAtivos.map((treino) =>
+      apiRequest(`/treinos/${treino.id}`, {
+        method: 'PATCH',
+        body: {
+          ...treino,
+          status: 'Arquivado',
+          updated_at: new Date().toISOString(),
+        },
+      }),
+    ),
+  )
 }
 
 async function saveDiasTreino(treinoId) {
-  const { error: deleteError } = await supabase
-    .from('treino_dias')
-    .delete()
-    .eq('treino_id', treinoId)
-
-  if (deleteError) {
-    throw deleteError
-  }
-
   const diasValidos = diasForm.value
     .filter((dia) => dia.nome?.trim())
     .map((dia, index) => ({
-      ...dia,
+      nome: dia.nome,
+      grupo_foco: emptyToNull(dia.grupo_foco),
       ordem: Number(dia.ordem || index + 1),
+      exercicios: (dia.exercicios || [])
+        .filter((exercicio) => {
+          return exercicio.nome_exercicio?.trim() || exercicio.exercicio_id
+        })
+        .map((exercicio, exercicioIndex) => ({
+          exercicio_id: exercicio.exercicio_id || null,
+          nome_exercicio: exercicio.nome_exercicio || 'Exercício',
+          aparelho: emptyToNull(exercicio.aparelho),
+          series: Number(exercicio.series || 3),
+          repeticoes: exercicio.repeticoes || '10-12',
+          descanso: exercicio.descanso || '60s',
+          carga: emptyToNull(exercicio.carga),
+          observacao: emptyToNull(exercicio.observacao),
+          ordem: Number(exercicio.ordem || exercicioIndex + 1),
+        })),
     }))
 
-  for (const dia of diasValidos) {
-    const { data: diaCriado, error: diaError } = await supabase
-      .from('treino_dias')
-      .insert({
-        treino_id: treinoId,
-        nome: dia.nome,
-        grupo_foco: emptyToNull(dia.grupo_foco),
-        ordem: Number(dia.ordem || 1),
-      })
-      .select()
-      .single()
-
-    if (diaError) {
-      throw diaError
-    }
-
-    const exerciciosPayload = (dia.exercicios || [])
-      .filter((exercicio) => {
-        return exercicio.nome_exercicio?.trim() || exercicio.exercicio_id
-      })
-      .map((exercicio, index) => ({
-        treino_dia_id: diaCriado.id,
-        exercicio_id: exercicio.exercicio_id || null,
-        nome_exercicio: exercicio.nome_exercicio || 'Exercício',
-        aparelho: emptyToNull(exercicio.aparelho),
-        series: Number(exercicio.series || 3),
-        repeticoes: exercicio.repeticoes || '10-12',
-        descanso: exercicio.descanso || '60s',
-        carga: emptyToNull(exercicio.carga),
-        observacao: emptyToNull(exercicio.observacao),
-        ordem: Number(exercicio.ordem || index + 1),
-      }))
-
-    if (exerciciosPayload.length > 0) {
-      const { error: exerciciosError } = await supabase
-        .from('treino_exercicios')
-        .insert(exerciciosPayload)
-
-      if (exerciciosError) {
-        throw exerciciosError
-      }
-    }
-  }
+  await apiRequest(`/treinos/${treinoId}/dias`, {
+    method: 'PUT',
+    body: diasValidos,
+  })
 }
-
 async function openExerciciosModal() {
   exerciciosModal.open = true
   resetExercicioForm()
@@ -1460,22 +1387,20 @@ async function saveExercicio() {
     }
 
     if (exercicioForm.id) {
-      const { error } = await supabase.from('exercicios').update(payload).eq('id', exercicioForm.id)
-
-      if (error) {
-        throw error
-      }
+      await apiRequest(`/treinos/exercicios/${exercicioForm.id}`, {
+        method: 'PATCH',
+        body: payload,
+      })
 
       $q.notify({
         type: 'positive',
         message: 'Exercício atualizado com sucesso',
       })
     } else {
-      const { error } = await supabase.from('exercicios').insert(payload)
-
-      if (error) {
-        throw error
-      }
+      await apiRequest('/treinos/exercicios', {
+        method: 'POST',
+        body: payload,
+      })
 
       $q.notify({
         type: 'positive',
@@ -1494,7 +1419,6 @@ async function saveExercicio() {
     savingExercicio.value = false
   }
 }
-
 function confirmDeleteExercicio(exercicio) {
   $q.dialog({
     title: 'Excluir exercício',
@@ -1518,11 +1442,9 @@ async function deleteExercicio(exercicio) {
   try {
     loadingExercicios.value = true
 
-    const { error } = await supabase.from('exercicios').delete().eq('id', exercicio.id)
-
-    if (error) {
-      throw error
-    }
+    await apiRequest(`/treinos/exercicios/${exercicio.id}`, {
+      method: 'DELETE',
+    })
 
     $q.notify({
       type: 'positive',
@@ -1539,7 +1461,6 @@ async function deleteExercicio(exercicio) {
     loadingExercicios.value = false
   }
 }
-
 function gerarTreinoAutomatico() {
   if (!exercicios.value.length) {
     $q.notify({

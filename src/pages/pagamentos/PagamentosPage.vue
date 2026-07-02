@@ -342,7 +342,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { supabase } from 'src/boot/supabase'
+import { apiRequest } from 'src/services/api-client'
 import { useConfigStore } from 'src/stores/config-store'
 
 const configStore = useConfigStore()
@@ -504,51 +504,20 @@ async function loadClientes() {
   try {
     loading.value = true
 
-    await atualizarPendentesNoBanco()
-
-    let query = supabase
-      .from('clientes')
-      .select('*')
-      .order('data_vencimento', { ascending: true, nullsFirst: false })
+    const params = new URLSearchParams()
 
     if (filters.status && filters.status !== 'Todos') {
-      query = query.eq('status', filters.status)
+      params.set('status', filters.status)
     }
 
     if (filters.search?.trim()) {
-      const search = filters.search.trim()
-
-      query = query.or(
-        `nome.ilike.%${search}%,email.ilike.%${search}%,telefone.ilike.%${search}%,cpf.ilike.%${search}%`,
-      )
+      params.set('search', filters.search.trim())
     }
 
-    if (filters.vencimento && filters.vencimento !== 'Todos') {
-      const hoje = getTodayDateInput()
+    const query = params.toString()
+    const data = await apiRequest(`/clientes${query ? `?${query}` : ''}`)
 
-      if (filters.vencimento === 'Vencidos') {
-        query = query.lt('data_vencimento', hoje).neq('status', 'Inativo')
-      }
-
-      if (filters.vencimento === 'Hoje') {
-        query = query.eq('data_vencimento', hoje)
-      }
-
-      if (filters.vencimento === 'Proximos7Dias') {
-        const limite = new Date()
-        limite.setDate(limite.getDate() + 7)
-
-        query = query.gte('data_vencimento', hoje).lte('data_vencimento', toDateInputValue(limite))
-      }
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-      throw error
-    }
-
-    clientes.value = data || []
+    clientes.value = filtrarClientesPorVencimento(data || []).sort(compareVencimento)
   } catch (error) {
     $q.notify({
       type: 'negative',
@@ -556,20 +525,6 @@ async function loadClientes() {
     })
   } finally {
     loading.value = false
-  }
-}
-
-async function atualizarPendentesNoBanco() {
-  const hoje = getTodayDateInput()
-
-  const { error } = await supabase
-    .from('clientes')
-    .update({ status: 'Pendente' })
-    .lt('data_vencimento', hoje)
-    .neq('status', 'Inativo')
-
-  if (error) {
-    throw error
   }
 }
 
@@ -626,24 +581,16 @@ async function registrarPagamento() {
       observacao: emptyToNull(pagamentoForm.observacao),
     }
 
-    const { error: pagamentoError } = await supabase.from('pagamentos').insert(pagamentoPayload)
+    await apiRequest('/pagamentos', {
+      method: 'POST',
+      body: pagamentoPayload,
+    })
 
-    if (pagamentoError) {
-      throw pagamentoError
-    }
-
-    const { error: clienteError } = await supabase
-      .from('clientes')
-      .update({
-        data_ultimo_pagamento: pagamentoForm.data_pagamento,
-        data_vencimento: pagamentoForm.data_vencimento,
-        status: 'Ativo',
-      })
-      .eq('id', cliente.id)
-
-    if (clienteError) {
-      throw clienteError
-    }
+    await atualizarCliente(cliente, {
+      data_ultimo_pagamento: pagamentoForm.data_pagamento,
+      data_vencimento: pagamentoForm.data_vencimento,
+      status: 'Ativo',
+    })
 
     $q.notify({
       type: 'positive',
@@ -675,15 +622,7 @@ async function loadHistorico(clienteId) {
   try {
     loadingHistorico.value = true
 
-    const { data, error } = await supabase
-      .from('pagamentos')
-      .select('*')
-      .eq('cliente_id', clienteId)
-      .order('data_pagamento', { ascending: false })
-
-    if (error) {
-      throw error
-    }
+    const data = await apiRequest(`/pagamentos/clientes/${clienteId}/historico`)
 
     historico.value = data || []
   } catch (error) {
@@ -740,11 +679,7 @@ async function alterarStatusCliente(cliente, status) {
   try {
     loading.value = true
 
-    const { error } = await supabase.from('clientes').update({ status }).eq('id', cliente.id)
-
-    if (error) {
-      throw error
-    }
+    await atualizarCliente(cliente, { status })
 
     $q.notify({
       type: 'positive',
@@ -760,6 +695,72 @@ async function alterarStatusCliente(cliente, status) {
   } finally {
     loading.value = false
   }
+}
+
+async function atualizarCliente(cliente, changes) {
+  const payload = {
+    nome: cliente.nome,
+    email: emptyToNull(cliente.email),
+    telefone: emptyToNull(cliente.telefone),
+    cpf: emptyToNull(cliente.cpf),
+    data_nascimento: emptyToNull(cliente.data_nascimento),
+    data_matricula: emptyToNull(cliente.data_matricula),
+    data_ultimo_pagamento: emptyToNull(cliente.data_ultimo_pagamento),
+    data_vencimento: emptyToNull(cliente.data_vencimento),
+    status: cliente.status || 'Ativo',
+    ...changes,
+  }
+
+  return apiRequest(`/clientes/${cliente.id}`, {
+    method: 'PATCH',
+    body: payload,
+  })
+}
+
+function filtrarClientesPorVencimento(lista) {
+  if (!filters.vencimento || filters.vencimento === 'Todos') {
+    return lista
+  }
+
+  const hoje = getTodayDateInput()
+
+  if (filters.vencimento === 'Vencidos') {
+    return lista.filter((cliente) => {
+      return cliente.status !== 'Inativo' && cliente.data_vencimento && cliente.data_vencimento < hoje
+    })
+  }
+
+  if (filters.vencimento === 'Hoje') {
+    return lista.filter((cliente) => cliente.data_vencimento === hoje)
+  }
+
+  if (filters.vencimento === 'Proximos7Dias') {
+    const limite = new Date()
+    limite.setDate(limite.getDate() + 7)
+    const limiteValue = toDateInputValue(limite)
+
+    return lista.filter((cliente) => {
+      return cliente.data_vencimento >= hoje && cliente.data_vencimento <= limiteValue
+    })
+  }
+
+  return lista
+}
+
+function compareVencimento(a, b) {
+  if (!a.data_vencimento && !b.data_vencimento) {
+    return 0
+  }
+
+  if (!a.data_vencimento) {
+    return 1
+  }
+
+  if (!b.data_vencimento) {
+    return -1
+  }
+
+  return a.data_vencimento.localeCompare(b.data_vencimento)
 }
 
 function calcularStatusPorVencimento(dataVencimento) {

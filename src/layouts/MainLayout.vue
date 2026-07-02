@@ -110,6 +110,17 @@
         <q-form @submit.prevent="trocarSenha">
           <q-card-section class="q-gutter-md">
             <q-input
+              v-model="trocarSenhaForm.senhaAtual"
+              outlined
+              dense
+              label="Senha atual"
+              type="password"
+              :disable="trocandoSenha"
+              lazy-rules
+              :rules="[(val) => !!val || 'Informe a senha atual']"
+            />
+
+            <q-input
               v-model="trocarSenhaForm.novaSenha"
               outlined
               dense
@@ -119,7 +130,7 @@
               lazy-rules
               :rules="[
                 (val) => !!val || 'Informe a nova senha',
-                (val) => String(val).length >= 6 || 'A senha precisa ter pelo menos 6 caracteres',
+                (val) => String(val).length >= 8 || 'A senha precisa ter pelo menos 8 caracteres',
               ]"
             />
 
@@ -160,7 +171,6 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar, Dark } from 'quasar'
 
-import { supabase } from 'src/boot/supabase'
 import { useAuthStore } from 'src/stores/auth-store'
 import { useConfigStore } from 'src/stores/config-store'
 
@@ -183,6 +193,7 @@ const trocarSenhaModal = reactive({
 })
 
 const trocarSenhaForm = reactive({
+  senhaAtual: '',
   novaSenha: '',
   confirmarSenha: '',
 })
@@ -232,37 +243,22 @@ async function trocarSenha() {
   try {
     trocandoSenha.value = true
 
-    if (!trocarSenhaForm.novaSenha || trocarSenhaForm.novaSenha.length < 6) {
-      throw new Error('A nova senha precisa ter pelo menos 6 caracteres')
+    if (!trocarSenhaForm.senhaAtual) {
+      throw new Error('Informe a senha atual')
+    }
+
+    if (!trocarSenhaForm.novaSenha || trocarSenhaForm.novaSenha.length < 8) {
+      throw new Error('A nova senha precisa ter pelo menos 8 caracteres')
     }
 
     if (trocarSenhaForm.novaSenha !== trocarSenhaForm.confirmarSenha) {
       throw new Error('As senhas não conferem')
     }
 
-    const { error: authError } = await supabase.auth.updateUser({
-      password: trocarSenhaForm.novaSenha,
-    })
-
-    if (authError) {
-      throw authError
-    }
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        precisa_trocar_senha: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', authStore.user.id)
-
-    if (profileError) {
-      throw profileError
-    }
-
-    await authStore.loadProfile()
+    await authStore.changePassword(trocarSenhaForm.senhaAtual, trocarSenhaForm.novaSenha)
 
     trocarSenhaModal.open = false
+    trocarSenhaForm.senhaAtual = ''
     trocarSenhaForm.novaSenha = ''
     trocarSenhaForm.confirmarSenha = ''
 

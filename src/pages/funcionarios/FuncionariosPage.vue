@@ -355,7 +355,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { supabase } from 'src/boot/supabase'
+import { apiRequest } from 'src/services/api-client'
 import { useAuthStore } from 'src/stores/auth-store'
 import {
   PERFIS,
@@ -529,35 +529,9 @@ async function loadFuncionarios() {
   try {
     loading.value = true
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select(`
-        id,
-        nome,
-        perfil,
-        cargo_nome,
-        telefone,
-        ativo,
-        cliente_id,
-        created_at,
-        updated_at
-      `)
-      .is('cliente_id', null)
-      .neq('perfil', PERFIS.ALUNO)
-      .order('created_at', { ascending: false })
+    const data = await apiRequest('/funcionarios')
 
-    if (error) {
-      throw error
-    }
-
-    const userIds = (data || []).map((item) => item.id)
-
-    const emailsById = await loadEmailsFuncionarios(userIds)
-
-    funcionarios.value = (data || []).map((item) => ({
-      ...item,
-      email: emailsById[item.id] || '',
-    }))
+    funcionarios.value = data || []
   } catch (error) {
     $q.notify({
       type: 'negative',
@@ -566,19 +540,6 @@ async function loadFuncionarios() {
   } finally {
     loading.value = false
   }
-}
-
-async function loadEmailsFuncionarios(userIds) {
-  // Por segurança, auth.users não é acessível direto pelo frontend.
-  // Nesta primeira versão, o e-mail não virá daqui.
-  // Quando criarmos uma Edge Function de listagem, ela retorna os emails corretamente.
-  const result = {}
-
-  userIds.forEach((id) => {
-    result[id] = ''
-  })
-
-  return result
 }
 
 function openCreateModal() {
@@ -654,8 +615,8 @@ async function criarFuncionario() {
       throw new Error('Confirme sua senha para criar este perfil')
     }
 
-    // Próximo passo: ligar na Edge Function criar-acesso-funcionario
-    const { data, error } = await supabase.functions.invoke('criar-acesso-funcionario', {
+    const data = await apiRequest('/funcionarios', {
+      method: 'POST',
       body: {
         nome: form.nome,
         email: form.email,
@@ -665,25 +626,6 @@ async function criarFuncionario() {
         senha_confirmacao: form.senha_confirmacao,
       },
     })
-
-    if (error) {
-      let functionMessage = error.message
-
-      try {
-        if (error.context) {
-          const errorBody = await error.context.json()
-          functionMessage = errorBody?.error || functionMessage
-        }
-      } catch {
-        // mantém erro padrão
-      }
-
-      throw new Error(functionMessage)
-    }
-
-    if (data?.error) {
-      throw new Error(data.error)
-    }
 
     modal.open = false
 
@@ -721,20 +663,16 @@ async function updateFuncionario() {
       throw new Error('Confirme sua senha para alterar este perfil')
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
+    await apiRequest(`/funcionarios/${form.id}`, {
+      method: 'PATCH',
+      body: {
         telefone: emptyToNull(form.telefone),
         perfil: form.perfil,
         cargo_nome: emptyToNull(form.cargo_nome),
         ativo: form.ativo,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', form.id)
-
-    if (error) {
-      throw error
-    }
+        senha_confirmacao: form.senha_confirmacao,
+      },
+    })
 
     $q.notify({
       type: 'positive',
@@ -780,17 +718,12 @@ async function alterarStatusFuncionario(funcionario, ativo) {
       throw new Error('Você não tem permissão para alterar este funcionário')
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
+    await apiRequest(`/funcionarios/${funcionario.id}/status`, {
+      method: 'PATCH',
+      body: {
         ativo,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', funcionario.id)
-
-    if (error) {
-      throw error
-    }
+      },
+    })
 
     $q.notify({
       type: 'positive',

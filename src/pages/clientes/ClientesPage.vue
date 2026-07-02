@@ -275,8 +275,8 @@
             </q-banner>
 
             <q-banner rounded class="bg-blue-1 text-blue-10">
-              Esse botão será ligado a uma Edge Function para criar o usuário no Supabase Auth com
-              segurança.
+              O acesso será criado pela API do sistema com senha temporária e troca obrigatória no
+              primeiro login.
             </q-banner>
           </q-card-section>
 
@@ -296,13 +296,49 @@
         </q-form>
       </q-card>
     </q-dialog>
+
+    <q-dialog v-model="acessoCriadoModal.open" persistent>
+      <q-card style="width: 520px; max-width: 95vw">
+        <q-card-section>
+          <div class="text-h6">Acesso criado</div>
+          <div class="text-grey-7">Acesso do aluno criado com sucesso.</div>
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section>
+          <p>Anote ou envie essa senha ao aluno. Ele deverá trocá-la no primeiro acesso.</p>
+
+          <div class="senha-box">
+            <div>
+              <div class="text-caption text-grey-7">Senha temporária</div>
+              <code class="senha-code">{{ acessoCriadoModal.senha }}</code>
+            </div>
+
+            <q-btn
+              color="primary"
+              icon="content_copy"
+              label="Copiar"
+              unelevated
+              @click="copySenhaAcessoAluno"
+            />
+          </div>
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-actions align="right">
+          <q-btn color="primary" unelevated label="Entendi" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { supabase } from 'src/boot/supabase'
+import { apiRequest } from 'src/services/api-client'
 
 const $q = useQuasar()
 
@@ -427,25 +463,18 @@ async function loadClientes() {
   try {
     loading.value = true
 
-    let query = supabase.from('clientes').select('*').order('created_at', { ascending: false })
+    const params = new URLSearchParams()
 
     if (filters.status && filters.status !== 'Todos') {
-      query = query.eq('status', filters.status)
+      params.set('status', filters.status)
     }
 
     if (filters.search?.trim()) {
-      const search = filters.search.trim()
-
-      query = query.or(
-        `nome.ilike.%${search}%,email.ilike.%${search}%,telefone.ilike.%${search}%,cpf.ilike.%${search}%`,
-      )
+      params.set('search', filters.search.trim())
     }
 
-    const { data, error } = await query
-
-    if (error) {
-      throw error
-    }
+    const query = params.toString()
+    const data = await apiRequest(`/clientes${query ? `?${query}` : ''}`)
 
     clientes.value = data || []
   } catch (error) {
@@ -534,6 +563,11 @@ const acessoAlunoForm = reactive({
   email: '',
 })
 
+const acessoCriadoModal = reactive({
+  open: false,
+  senha: '',
+})
+
 function openAcessoAlunoModal(cliente) {
   acessoAlunoModal.open = true
   acessoAlunoModal.cliente = cliente
@@ -555,123 +589,16 @@ async function criarAcessoAluno() {
       throw new Error('Informe o e-mail')
     }
 
-    const { data, error } = await supabase.functions.invoke('criar-acesso-aluno', {
+    const data = await apiRequest(`/clientes/${cliente.id}/acesso-aluno`, {
+      method: 'POST',
       body: {
-        cliente_id: cliente.id,
         email: acessoAlunoForm.email,
         nome: cliente.nome,
       },
     })
 
-    if (error) {
-      let functionMessage = error.message
-
-      try {
-        if (error.context) {
-          const errorBody = await error.context.json()
-          functionMessage = errorBody?.error || functionMessage
-        }
-      } catch {
-        // mantém mensagem padrão
-      }
-
-      throw new Error(functionMessage)
-    }
-
-    if (data?.error) {
-      throw new Error(data.error)
-    }
-
-    const senhaTemporaria = data.senha_temporaria
-    const copyButtonId = `copy-temp-password-${Date.now()}`
-
-    $q.dialog({
-      title: 'Acesso criado',
-      html: true,
-      message: `
-    <div>
-      <p>Acesso do aluno criado com sucesso.</p>
-
-      <div style="
-        margin: 12px 0;
-        padding: 12px;
-        border-radius: 8px;
-        background: #f5f5f5;
-        border: 1px solid #ddd;
-      ">
-        <div style="
-          font-size: 12px;
-          color: #666;
-          margin-bottom: 6px;
-        ">
-          Senha temporária
-        </div>
-
-        <div style="
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-        ">
-          <code style="
-            font-size: 18px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            color: #111;
-          ">${senhaTemporaria}</code>
-
-          <button
-            id="${copyButtonId}"
-            type="button"
-            style="
-              border: none;
-              border-radius: 6px;
-              padding: 8px 12px;
-              cursor: pointer;
-              background: #1976d2;
-              color: white;
-              font-weight: 600;
-            "
-          >
-            Copiar
-          </button>
-        </div>
-      </div>
-
-      <p>Anote ou envie essa senha ao aluno.</p>
-    </div>
-  `,
-      ok: {
-        label: 'Entendi',
-        color: 'primary',
-        unelevated: true,
-      },
-      persistent: true,
-    })
-
-    setTimeout(() => {
-      const copyButton = document.getElementById(copyButtonId)
-
-      if (!copyButton) {
-        return
-      }
-
-      copyButton.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(senhaTemporaria)
-
-          $q.notify({
-            type: 'positive',
-            message: 'Senha copiada',
-          })
-        } catch {
-          $q.notify({
-            type: 'negative',
-            message: 'Não foi possível copiar a senha',
-          })
-        }
-      })
-    }, 300)
+    acessoCriadoModal.senha = data.senha_temporaria || ''
+    acessoCriadoModal.open = true
 
     acessoAlunoModal.open = false
     acessoAlunoModal.cliente = null
@@ -685,6 +612,22 @@ async function criarAcessoAluno() {
     })
   } finally {
     savingAcessoAluno.value = false
+  }
+}
+
+async function copySenhaAcessoAluno() {
+  try {
+    await navigator.clipboard.writeText(acessoCriadoModal.senha)
+
+    $q.notify({
+      type: 'positive',
+      message: 'Senha copiada',
+    })
+  } catch {
+    $q.notify({
+      type: 'negative',
+      message: 'Não foi possível copiar a senha',
+    })
   }
 }
 
@@ -756,22 +699,20 @@ async function saveCliente() {
     }
 
     if (modal.isEdit) {
-      const { error } = await supabase.from('clientes').update(payload).eq('id', form.id)
-
-      if (error) {
-        throw error
-      }
+      await apiRequest(`/clientes/${form.id}`, {
+        method: 'PATCH',
+        body: payload,
+      })
 
       $q.notify({
         type: 'positive',
         message: 'Cliente atualizado com sucesso',
       })
     } else {
-      const { error } = await supabase.from('clientes').insert(payload)
-
-      if (error) {
-        throw error
-      }
+      await apiRequest('/clientes', {
+        method: 'POST',
+        body: payload,
+      })
 
       $q.notify({
         type: 'positive',
@@ -815,11 +756,9 @@ async function deleteCliente(cliente) {
   try {
     loading.value = true
 
-    const { error } = await supabase.from('clientes').delete().eq('id', cliente.id)
-
-    if (error) {
-      throw error
-    }
+    await apiRequest(`/clientes/${cliente.id}`, {
+      method: 'DELETE',
+    })
 
     $q.notify({
       type: 'positive',
@@ -855,3 +794,25 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString('pt-BR')
 }
 </script>
+
+<style scoped>
+.senha-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f5f5f5;
+  border: 1px solid #dddddd;
+}
+
+.senha-code {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #111111;
+}
+</style>

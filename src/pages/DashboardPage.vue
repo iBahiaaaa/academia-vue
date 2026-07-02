@@ -234,15 +234,24 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
-import { supabase } from 'src/boot/supabase'
+import { apiRequest } from 'src/services/api-client'
 
 const $q = useQuasar()
 
 const loading = ref(false)
-const clientes = ref([])
-const pagamentosMes = ref([])
+const resumo = ref({
+  totalClientes: 0,
+  ativos: 0,
+  pendentes: 0,
+  inativos: 0,
+  pagamentosMes: 0,
+  receitaMes: 0,
+  vencidos: 0,
+  vencendo7Dias: 0,
+})
+const clientesPendentes = ref([])
 const ultimosPagamentos = ref([])
 const ocultarValores = ref(true)
 
@@ -276,61 +285,6 @@ const clientesColumns = [
   },
 ]
 
-const resumo = computed(() => {
-  const hoje = getTodayDateInput()
-  const daqui7 = new Date()
-  daqui7.setDate(daqui7.getDate() + 7)
-  const limite7Dias = toDateInputValue(daqui7)
-
-  const receitaMes = pagamentosMes.value.reduce((total, pagamento) => {
-    return total + Number(pagamento.valor || 0)
-  }, 0)
-
-  return {
-    totalClientes: clientes.value.length,
-    ativos: clientes.value.filter((cliente) => cliente.status === 'Ativo').length,
-    pendentes: clientes.value.filter((cliente) => cliente.status === 'Pendente').length,
-    inativos: clientes.value.filter((cliente) => cliente.status === 'Inativo').length,
-    pagamentosMes: pagamentosMes.value.length,
-    receitaMes,
-    vencidos: clientes.value.filter((cliente) => {
-      return (
-        cliente.status !== 'Inativo' && cliente.data_vencimento && cliente.data_vencimento < hoje
-      )
-    }).length,
-    vencendo7Dias: clientes.value.filter((cliente) => {
-      return (
-        cliente.status !== 'Inativo' &&
-        cliente.data_vencimento &&
-        cliente.data_vencimento >= hoje &&
-        cliente.data_vencimento <= limite7Dias
-      )
-    }).length,
-  }
-})
-
-const clientesPendentes = computed(() => {
-  const hoje = getTodayDateInput()
-
-  return clientes.value
-    .filter((cliente) => {
-      if (cliente.status === 'Inativo') {
-        return false
-      }
-
-      if (cliente.status === 'Pendente') {
-        return true
-      }
-
-      if (!cliente.data_vencimento) {
-        return true
-      }
-
-      return cliente.data_vencimento < hoje
-    })
-    .slice(0, 10)
-})
-
 onMounted(async () => {
   await loadDashboard()
 })
@@ -339,9 +293,14 @@ async function loadDashboard() {
   try {
     loading.value = true
 
-    await atualizarPendentesNoBanco()
+    const data = await apiRequest('/dashboard')
 
-    await Promise.all([loadClientes(), loadPagamentosMes(), loadUltimosPagamentos()])
+    resumo.value = {
+      ...resumo.value,
+      ...(data.resumo || {}),
+    }
+    clientesPendentes.value = data.clientesPendentes || []
+    ultimosPagamentos.value = data.ultimosPagamentos || []
   } catch (error) {
     $q.notify({
       type: 'negative',
@@ -350,79 +309,6 @@ async function loadDashboard() {
   } finally {
     loading.value = false
   }
-}
-
-async function atualizarPendentesNoBanco() {
-  const hoje = getTodayDateInput()
-
-  const { error } = await supabase
-    .from('clientes')
-    .update({ status: 'Pendente' })
-    .lt('data_vencimento', hoje)
-    .neq('status', 'Inativo')
-
-  if (error) {
-    throw error
-  }
-}
-
-async function loadClientes() {
-  const { data, error } = await supabase
-    .from('clientes')
-    .select('*')
-    .order('data_vencimento', { ascending: true, nullsFirst: false })
-
-  if (error) {
-    throw error
-  }
-
-  clientes.value = data || []
-}
-
-async function loadPagamentosMes() {
-  const inicioMes = getInicioMes()
-  const fimMes = getFimMes()
-
-  const { data, error } = await supabase
-    .from('pagamentos')
-    .select('*')
-    .gte('data_pagamento', inicioMes)
-    .lte('data_pagamento', fimMes)
-
-  if (error) {
-    throw error
-  }
-
-  pagamentosMes.value = data || []
-}
-
-async function loadUltimosPagamentos() {
-  const { data, error } = await supabase
-    .from('pagamentos')
-    .select(
-      `
-      id,
-      cliente_id,
-      data_pagamento,
-      data_vencimento,
-      valor,
-      forma_pagamento,
-      observacao,
-      created_at,
-      clientes (
-        id,
-        nome
-      )
-    `,
-    )
-    .order('created_at', { ascending: false })
-    .limit(8)
-
-  if (error) {
-    throw error
-  }
-
-  ultimosPagamentos.value = data || []
 }
 
 function getStatusColor(status) {
@@ -463,26 +349,13 @@ function getVencimentoClass(cliente) {
   return ''
 }
 
-function toDateInputValue(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+function getTodayDateInput() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
-}
-
-function getTodayDateInput() {
-  return toDateInputValue(new Date())
-}
-
-function getInicioMes() {
-  const now = new Date()
-  return toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1))
-}
-
-function getFimMes() {
-  const now = new Date()
-  return toDateInputValue(new Date(now.getFullYear(), now.getMonth() + 1, 0))
 }
 
 function formatDateOnly(value) {

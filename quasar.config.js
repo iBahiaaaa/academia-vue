@@ -12,7 +12,7 @@ export default defineConfig((ctx) => {
     // app boot file (/src/boot)
     // --> boot files are part of "main.js"
     // https://legacy-app.quasar.dev/quasar-cli-vite-v2/boot-files
-    boot: ['supabase'],
+    boot: [],
 
     // https://legacy-app.quasar.dev/quasar-cli-vite-v2/quasar-config-file#css
     css: ['app.scss'],

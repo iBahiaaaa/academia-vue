@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { setCssVar, Dark } from 'quasar'
-import { supabase } from 'src/boot/supabase'
+import { apiRequest, getAccessToken } from 'src/services/api-client'
 
 export const useConfigStore = defineStore('config', {
   state: () => ({
@@ -32,15 +32,7 @@ export const useConfigStore = defineStore('config', {
       try {
         this.loading = true
 
-        const { data, error } = await supabase
-          .from('configuracoes')
-          .select('*')
-          .eq('id', 1)
-          .single()
-
-        if (error) {
-          throw error
-        }
+        const data = await this.fetchConfig()
 
         if (data) {
           this.config = {
@@ -51,6 +43,10 @@ export const useConfigStore = defineStore('config', {
           this.applyTheme()
         }
 
+        this.initialized = true
+      } catch (error) {
+        console.warn('Nao foi possivel carregar configuracoes; usando padrao local.', error)
+        this.applyTheme()
         this.initialized = true
       } finally {
         this.loading = false
@@ -66,16 +62,7 @@ export const useConfigStore = defineStore('config', {
           updated_at: new Date().toISOString()
         }
 
-        const { data, error } = await supabase
-          .from('configuracoes')
-          .update(updatePayload)
-          .eq('id', 1)
-          .select()
-          .single()
-
-        if (error) {
-          throw error
-        }
+        const data = await this.persistConfig(updatePayload)
 
         this.config = {
           ...this.config,
@@ -87,6 +74,34 @@ export const useConfigStore = defineStore('config', {
         return data
       } finally {
         this.loading = false
+      }
+    },
+
+    async fetchConfig() {
+      if (!getAccessToken()) {
+        return apiRequest('/configuracoes/publica')
+      }
+
+      try {
+        return await apiRequest('/configuracoes')
+      } catch (error) {
+        console.warn('Nao foi possivel carregar configuracoes autenticadas; tentando publica.', error)
+        return apiRequest('/configuracoes/publica')
+      }
+    },
+
+    async persistConfig(payload) {
+      try {
+        return await apiRequest('/configuracoes', {
+          method: 'PATCH',
+          body: payload
+        })
+      } catch (error) {
+        console.warn('PATCH /configuracoes falhou; tentando PUT /configuracoes.', error)
+        return apiRequest('/configuracoes', {
+          method: 'PUT',
+          body: payload
+        })
       }
     },
 
